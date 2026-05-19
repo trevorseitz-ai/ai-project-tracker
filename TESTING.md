@@ -152,3 +152,4 @@ Defined in `vitest.config.js`. CI will fail if coverage drops below:
 | Statements | 70% |
 
 Run `npm run test:coverage` to see current coverage. The HTML report is at `coverage/index.html`.
+#CI triggered
