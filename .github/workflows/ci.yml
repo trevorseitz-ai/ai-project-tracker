@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Unit + Security tests (fast, no API calls, runs on every push) ──────────
+  test-unit:
+    name: Unit & Security Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: self-hosted/package.json
+
+      - name: Install dependencies
+        working-directory: self-hosted
+        run: npm ci
+
+      - name: Run unit tests
+        working-directory: self-hosted
+        run: npm test
+
+      - name: Run security tests
+        working-directory: self-hosted
+        run: npm run test:security
+
+      - name: Generate coverage report
+        working-directory: self-hosted
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: self-hosted/coverage/
+
+  # ── AI prompt tests (costs tokens — only runs on manual trigger or release) ─
+  test-ai-prompts:
+    name: AI Prompt Schema Tests
+    runs-on: ubuntu-latest
+    # Only run on workflow_dispatch (manual) or when pushing a release tag
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: self-hosted/package.json
+
+      - name: Install dependencies
+        working-directory: self-hosted
+        run: npm ci
+
+      - name: Run AI prompt tests
+        working-directory: self-hosted
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ENABLE_AI_TESTS: "true"
+        run: npm run test:ai
+
+  # ── Build check (ensures the app builds without errors) ─────────────────────
+  build:
+    name: Build Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: self-hosted/package.json
+
+      - name: Install dependencies
+        working-directory: self-hosted
+        run: npm ci
+
+      - name: Build
+        working-directory: self-hosted
+        env:
+          # Dummy key — build should succeed without a real key
+          VITE_ANTHROPIC_API_KEY: "sk-ant-test-key-for-build-only"
+        run: npm run build
