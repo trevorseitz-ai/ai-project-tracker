@@ -1,5 +1,9 @@
 # Advanced Integrations Guide
 
+> **Not current documentation.** Examples here use CLI commands (`npm run prep-agent`) that **do not exist**. For live agent integration, use the [API Reference](./API_REFERENCE.md) and `POST /api/project-update`. See [Roadmap](./ROADMAP.md).
+
+---
+
 This document provides instructions for integrating the AI Project Tracker with advanced tools and workflows, including CI/CD pipelines, project management systems, and external notifications. These integrations enhance its functionality and adaptability to complex environments.
 
 ---
@@ -186,4 +190,4 @@ Integrate the tracker with your Continuous Integration/Continuous Delivery (CI/C
 
 ---
 
-For additional integrations or issues, refer to the [FAQs](./FAQs.md) or open a GitHub issue.
+For additional integrations or issues, see [API Reference](./API_REFERENCE.md) or open a GitHub issue.

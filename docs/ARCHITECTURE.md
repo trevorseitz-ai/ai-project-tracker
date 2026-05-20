@@ -1,119 +1,150 @@
-# Code Architecture Documentation
+# Code Architecture
 
-This document provides an overview of the code organization, key components, and interaction flow within the AI Project Tracker. Understanding this architecture will help contributors and users extend and adapt the project seamlessly.
-
----
-
-## Introduction
-
-The AI Project Tracker is designed to seamlessly integrate into various AI projects. By organizing the code into modular components, the system ensures simplicity in workflow execution and extensibility. This guide explains the architecture and highlights the essential parts of the codebase.
+How the self-hosted AI Project Tracker is built today — a React UI, an Express API, and shared logic for project updates.
 
 ---
 
-## Folder Structure
+## High-level overview
 
-Here’s the high-level directory structure of the AI Project Tracker:
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Browser (localhost:3000)                                    │
+│  ┌─────────────┐   Anthropic API    ┌─────────────────────┐ │
+│  │  App.jsx    │ ─────────────────► │ Parse / Prep /      │ │
+│  │  5 tabs     │   (VITE_ANTHROPIC) │ Reporter generation │ │
+│  └──────┬──────┘                    └─────────────────────┘ │
+│         │ fetch /api/*                                       │
+└─────────┼───────────────────────────────────────────────────┘
+          │ Vite proxy (dev) or same origin (prod)
+          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Express API (server/index.js)                               │
+│  POST /api/project-update  ← autonomous agents               │
+│  GET/PUT /api/projects     ← UI sync                         │
+└──────────┬──────────────────────────────────────────────────┘
+           ▼
+    data/projects.json
+```
+
+**Prep / Push / Pull** are not separate CLI modules. They are AI prompts in `App.jsx` that generate JSON, scripts, and handshake files you copy into external projects.
+
+---
+
+## Repository layout
 
 ```
 ai-project-tracker/
-|-- src/
-|   |-- agents/
-|   |   |-- prepAgent.js
-|   |   |-- pushReporter.js
-|   |   |-- pullReporter.js
-|-- tests/
-|   |-- agents.test.js
-|   |-- workflows.test.js
-|-- docs/
-|   |-- GETTING_STARTED.md
-|   |-- TROUBLESHOOTING.md
-|-- .tracker-config.json
-|-- package.json
-|-- README.md
-|-- .env.example
-```
-
-### Explanation of Directories:
-- **`src`**: Contains the main source code for agents and workflow logic.
-  - `agents/` houses the implementation of Prep, Push, and Pull workflows.
-- **`tests`**: Contains unit and integration tests to validate each workflow.
-- **`docs`**: Stores documentation files for setup, troubleshooting, and other guides.
-- **Root Files**:
-  - `.tracker-config.json`: Stores configuration details for projects prepared using the tracker.
-  - `.env.example`: An example environment configuration file.
-  - `package.json`: Lists dependencies and scripts for managing the Node.js environment.
-
----
-
-## Key Components
-
-### 1. Prep Agent
-**Purpose**: Prepares a project for tracking by creating a `.tracker-config.json` file.
-- **Location**: `src/agents/prepAgent.js`
-- **Primary Tasks**:
-  - Audits the project directory.
-  - Extracts metadata from the `README` and `package.json` (if applicable).
-  - Generates `.tracker-config.json`.
-
-### 2. Push Reporter
-**Purpose**: Adds a reporting agent (e.g., `reporter.py`) to the project.
-- **Location**: `src/agents/pushReporter.js`
-- **Primary Tasks**:
-  - Creates or modifies a `reporter.py` file in the project directory.
-  - Provides customizable templates for the reporter.
-
-### 3. Pull Reporter
-**Purpose**: Analyzes projects and pulls status updates automatically or interactively.
-- **Location**: `src/agents/pullReporter.js`
-- **Primary Tasks**:
-  - Gathers project updates (e.g., progress, blockers).
-  - Has autonomous and human-in-loop modes.
-
----
-
-## Interaction Flow
-
-### Workflow Execution
-1. **Prep Agent**:
-   - Initializes project tracking by auditing the project.
-   - Outputs `.tracker-config.json` for use during Push and Pull workflows.
-2. **Push Agent**:
-   - Injects required scripts (e.g., `reporter.py`) into the project.
-   - Uses details from `.tracker-config.json`.
-3. **Pull Agent**:
-   - Inspects and reports project status based on logs or manual input.
-
-### Data Flow
-```
-Project Files --> [Prep Agent] --> .tracker-config.json --> [Push Reporter] --> reporter.py --> [Pull Reporter] --> Status Updates
+├── claude-artifact/
+│   └── App.jsx                 ← paste into claude.ai (no backend)
+├── self-hosted/
+│   ├── src/
+│   │   ├── App.jsx             ← entire React UI + Anthropic calls
+│   │   ├── main.jsx
+│   │   ├── storage.js          ← localStorage + env helpers
+│   │   └── api.js              ← fetch wrappers for /api/*
+│   ├── server/
+│   │   ├── index.js            ← Express app + routes
+│   │   └── fileStorage.js      ← reads/writes data/projects.json
+│   ├── shared/
+│   │   ├── projectLogic.js     ← commit update, validate agent payload
+│   │   └── projectsSchema.js   ← project/update validation
+│   ├── data/                   ← gitignored; server persistence
+│   ├── tests/                  ← Vitest (unit, security, ai)
+│   ├── vite.config.js          ← dev proxy /api → :3001
+│   └── .env.example
+└── docs/
 ```
 
 ---
 
-## Extensibility
+## UI tabs (`App.jsx`)
 
-The AI Project Tracker is built to be flexible and extendable. Here’s how:
-
-### Adding New Workflows
-1. Create a new file in `src/agents/` (e.g., `newWorkflow.js`).
-2. Register the workflow in `package.json` under the `scripts` section.
-   ```json
-   "new-workflow": "node src/agents/newWorkflow.js"
-   ```
-3. Document the workflow in `docs/`.
-
-### Modifying Existing Components
-- Update logic in scripts under `src/agents/` as needed.
-- Ensure that changes are tested using `tests/`.
+| Tab | Role |
+|---|---|
+| **BOARD** | Project cards, status, update history |
+| **LOG UPDATE** | Paste text → AI parse → commit |
+| **REPORTER** | Generate Push/Pull scripts or copy schema prompt |
+| **PREP AGENT** | Compliance audit + `.tracker-config.json` + prep script |
+| **AGENT API** | Live webhook spec, export/import JSON |
 
 ---
 
-## Technologies Used
+## Data flow
 
-- **Node.js**: Backend runtime for executing agents.
-- **Python**: Reporter scripts are implemented in Python for cross-platform compatibility.
-- **JSON**: Configuration management using `.tracker-config.json`.
+### Human-in-the-loop
+
+1. User pastes or commits an update in the UI.
+2. `commitUpdateToProjects()` merges it into state (`shared/projectLogic.js`).
+3. React state saves to `localStorage` and syncs to server via `PUT /api/projects`.
+4. Server writes `data/projects.json`.
+
+### Autonomous agent
+
+1. Agent POSTs to `/api/project-update` with `X-Agent-Key`.
+2. Server validates payload, merges update, writes `projects.json`.
+3. UI polls `GET /api/projects` every 5s and refreshes the board.
+
+### External project scripts
+
+1. User runs Prep/Push/Pull in the UI → copies generated Python script + handshake JSON.
+2. User saves files into their **external** repo (the tracker does not write to disk remotely).
+3. Script runs in that repo and POSTs updates back to `VITE_TRACKER_URL`.
 
 ---
 
-For further support, refer to the [Testing Guide](./TESTING.md) and [Troubleshooting Guide](./TROUBLESHOOTING.md).
+## Key modules
+
+| Module | Purpose |
+|---|---|
+| `shared/projectLogic.js` | Shared merge/validate logic for UI and server |
+| `shared/projectsSchema.js` | `isValidProject`, import normalization |
+| `src/storage.js` | Browser persistence, tracker URL, agent key from env |
+| `server/index.js` | HTTP routes, agent key check |
+| `server/fileStorage.js` | JSON file CRUD |
+
+---
+
+## Development vs production
+
+| | Development | Production |
+|---|---|---|
+| **Start** | `npm run dev` | `npm run build && npm start` |
+| **UI** | Vite `:3000` | Express serves `dist/` |
+| **API** | Express `:3001`, proxied | Same process as UI |
+| **Env** | `self-hosted/.env` | Set env vars on host |
+
+---
+
+## Generated artifacts (external repos)
+
+| Artifact | Produced by | Used by |
+|---|---|---|
+| `.tracker-config.json` | Prep Agent tab | Reporter scripts on arrival |
+| `reporter.py` (or similar) | Push/Pull tabs | Host agent, calls `POST /api/project-update` |
+| Prep Python script | Prep Agent tab | Optional automated fixes in target repo |
+
+These are **copied from the UI**, not written automatically into other directories.
+
+---
+
+## Extending the codebase
+
+**New API route:** add handler in `server/index.js`, test in `tests/unit/server-api.test.js`.
+
+**New UI feature:** edit `App.jsx` (monolith today) or extract components as the app grows.
+
+**Shared business logic:** put pure functions in `shared/` so both client and server can import them.
+
+---
+
+## Technologies
+
+- **React 18** + **Vite** — frontend
+- **Express** — webhook API and production static hosting
+- **Anthropic API** — parse, prep, reporter generation (browser-side)
+- **Vitest** — tests
+- **JSON file** — server persistence (`data/projects.json`)
+
+---
+
+See [API Reference](./API_REFERENCE.md), [Testing](./TESTING.md), and [Roadmap](./ROADMAP.md) for integration details and planned work.

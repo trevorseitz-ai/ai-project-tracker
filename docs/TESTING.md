@@ -1,143 +1,136 @@
 # Testing Guide
 
-This document provides a comprehensive guide on how to test the Prep, Push, and Pull workflows of the AI Project Tracker. Testing ensures stability and reliability of the application across different environments and use cases.
+How to run and extend the test suite for the self-hosted tracker.
 
 ---
 
-## Prerequisites
-Before you begin testing, ensure the following:
-- All dependencies are installed:
-  ```bash
-  npm install
-  ```
-- You have completed the setup steps as outlined in the [Getting Started Guide](./GETTING_STARTED.md).
-- You have access to a test project for running workflows.
+## Test structure
 
----
-
-## Testing the Prep Workflow
-
-### Purpose:
-To ensure the Prep Agent correctly parses and prepares your project for tracking.
-
-### Steps:
-1. **Create a Test Project**:
-   - Include a minimal README file and a version-controlled repository (e.g., Git).
-2. **Run the Prep Agent**:
-   ```bash
-   npm run prep-agent
-   ```
-3. **Verify Output**:
-   - Check if the `.tracker-config.json` file is generated.
-   - Confirm it includes fields like `project_name`, `model_used`, and `stack`. Example:
-     ```json
-     {
-       "project_name": "Test Project",
-       "model_used": "Test Model",
-       "stack": ["Node.js", "React"]
-     }
-     ```
-4. **Inspect Logs**:
-   - Verify the terminal output for errors or warnings.
-
-### Automated Testing:
-If the Prep workflow is automated:
-```bash
-npm test prep-workflow
 ```
-This runs all associated unit tests.
-
-### Troubleshooting:
-- **Problem**: `.tracker-config.json` is not created.
-  - **Solution**: Ensure the test project includes a README and is under version control.
-- **Problem**: Missing fields.
-  - **Solution**: Check the Prep Agent script and manually add fields to the `.tracker-config.json`.
-
----
-
-## Testing the Push Workflow
-
-### Purpose:
-To ensure the Push Reporter integrates seamlessly into a project and generates the appropriate reporting script.
-
-### Steps:
-1. **Run the Push Reporter**:
-   ```bash
-   npm run push-reporter
-   ```
-2. **Verify Output**:
-   - Check if the `reporter.py` file is created in the project root.
-   - Inspect the contents of `reporter.py` for the correct fields (e.g., `type`, `project`, `status`).
-3. **Simulate a Push**:
-   - Test running the Reporter script manually:
-     ```bash
-     python reporter.py
-     ```
-   - Confirm that it sends a dummy update (mock API call).
-
-### Automated Testing:
-Run unit tests for the Push workflow:
-```bash
-npm test push-workflow
-```
-
-### Troubleshooting:
-- **Problem**: Reporter script is not generated.
-  - **Solution**: Ensure the Prep workflow was successfully completed first.
-- **Problem**: Mock API call throws errors.
-  - **Solution**: Verify the webhook URL or API endpoint configuration in the script.
-
----
-
-## Testing the Pull Workflow
-
-### Purpose:
-To ensure the Pull Reporter accurately retrieves and structures updates from a project.
-
-### Steps:
-1. **Run the Pull Reporter**:
-   ```bash
-   npm run pull-reporter
-   ```
-2. **Choose a Mode**:
-   - **Autonomous Mode**: Ensure updates are automatically inferred.
-   - **Human-In-Loop Mode**: Ensure all required questions are prompted and responses are logged correctly.
-3. **Verify Updates**:
-   - Check for the correct structure in the update logs. Example:
-     ```json
-     {
-       "type": "progress",
-       "project": "Test Project",
-       "status": "Active",
-       "blockers": [],
-       "next_steps": ["Complete milestone"]
-     }
-     ```
-
-### Automated Testing:
-Run unit tests for the Pull workflow:
-```bash
-npm test pull-workflow
-```
-
-### Troubleshooting:
-- **Problem**: Reporter fails to infer updates.
-  - **Solution**: Verify that the project directory includes standard files (e.g., `README`, `package.json`, `requirements.txt`).
-- **Problem**: Questions are incomplete in Human-In-Loop Mode.
-  - **Solution**: Update the question logic in the Pull Reporter script.
-
----
-
-## General Testing Tips
-- Use a **controlled test project** for consistent results.
-- Run workflows in **different environments** to test stability (e.g., Linux, Windows, and Mac).
-- Enable **verbose logging** to identify hidden errors by modifying the `scripts` section in `package.json` to include `--verbose`.
-
-Example:
-```bash
-npm run prep-agent --verbose
+self-hosted/
+└── tests/
+    ├── vitest.config.js
+    ├── vitest.setup.js           ← localStorage mock, fetch mock
+    ├── unit/
+    │   ├── helpers.test.js       ← parse/validate helpers (mirrored from App.jsx)
+    │   ├── project-state.test.js ← CRUD, exports, stats
+    │   ├── projectLogic.test.js  ← shared commit/validate logic
+    │   ├── storage.test.js       ← localStorage, env URL/key helpers
+    │   └── server-api.test.js    ← webhook API (supertest)
+    ├── security/
+    │   └── security.test.js      ← XSS, injection, key exposure
+    └── ai/
+        ├── prompt-schema.test.js ← live Anthropic calls (optional)
+        └── adversarial.test.js
 ```
 
 ---
 
-This concludes the testing guide. For additional support, refer to the [Troubleshooting Guide](./TROUBLESHOOTING.md) or open an issue on GitHub.
+## Running tests
+
+From `self-hosted/`:
+
+```bash
+npm test                  # unit tests only
+npm run test:security     # security tests
+npm run test:coverage     # coverage report (thresholds in vitest.config.js)
+```
+
+Run both fast suites before committing:
+
+```bash
+npm test && npm run test:security
+```
+
+### AI tests (costs tokens)
+
+```bash
+ENABLE_AI_TESTS=true ANTHROPIC_API_KEY=sk-ant-... npm run test:ai
+```
+
+AI tests are excluded from default CI on every push. CI runs them on manual trigger or release tags when `ANTHROPIC_API_KEY` is configured.
+
+---
+
+## What each suite covers
+
+### Unit (`tests/unit/`)
+
+| File | Covers |
+|---|---|
+| `helpers.test.js` | Timestamps, IDs, `detectMissing`, board commit simulation, schema enums |
+| `project-state.test.js` | Project list mutations, status transitions, export formats |
+| `projectLogic.test.js` | `commitUpdateToProjects`, agent payload validation, status snapshots |
+| `storage.test.js` | `getTrackerUrl`, `getAgentKey`, import validation, localStorage round-trip |
+| `server-api.test.js` | `POST /api/project-update`, auth, `GET /api/project-status`, `PUT /api/projects` |
+
+### Security (`tests/security/`)
+
+XSS handling, prompt-injection resistance patterns, API key not leaking in exports, malicious handshake sanitization, large input handling.
+
+### AI (`tests/ai/`)
+
+Live prompt output schema compliance and adversarial inputs. Requires `ENABLE_AI_TESTS=true` and an API key.
+
+---
+
+## Manual smoke test (UI + API)
+
+1. `npm run dev` — confirm both `api` and `web` processes start.
+2. Open [http://localhost:3000](http://localhost:3000), add a project on **BOARD**.
+3. POST a test update:
+
+```bash
+curl -X POST http://localhost:3000/api/project-update \
+  -H "Content-Type: application/json" \
+  -H "X-Agent-Key: dev-agent-key" \
+  -d '{"type":"daily","project":"Smoke","summary":"Manual smoke test passed","status":"Active"}'
+```
+
+4. Within ~5 seconds the **Smoke** project should appear or update on the board.
+
+---
+
+## CI behaviour
+
+| Trigger | Runs |
+|---|---|
+| Every push / PR | Unit tests, security tests, build |
+| Manual / release tag | + AI prompt tests (if secret set) |
+
+See `.github/workflows/ci.yml`.
+
+---
+
+## Adding tests
+
+**New shared logic:** add to `shared/` and test in `tests/unit/projectLogic.test.js`.
+
+**New API route:** add to `server/index.js` and test in `tests/unit/server-api.test.js` using `createApp()` from the server module.
+
+**New security case:** add to `tests/security/security.test.js` — no live API calls.
+
+**New AI prompt test:** add inside `describeAI` blocks in `tests/ai/` with `ENABLE_AI_TESTS` guard and 30s+ timeout.
+
+---
+
+## Coverage thresholds
+
+Defined in `tests/vitest.config.js`:
+
+| Metric | Minimum |
+|---|---|
+| Lines | 70% |
+| Functions | 70% |
+| Branches | 60% |
+| Statements | 70% |
+
+HTML report: `coverage/index.html` after `npm run test:coverage`.
+
+---
+
+## GitHub Actions secret
+
+For AI tests in CI: Settings → Secrets → `ANTHROPIC_API_KEY`.
+
+Unit and security tests need no secrets.

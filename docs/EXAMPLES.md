@@ -1,120 +1,81 @@
 # Examples Guide
 
-This guide provides real-world use cases for the AI Project Tracker to help you adapt it to your projects. Whether you’re working on software development, data pipelines, or integrating multiple models, these examples will guide you through common setups.
-
----
-
-## Introduction
-The following examples demonstrate how to implement the AI Project Tracker in different scenarios. Each example highlights the Prep, Push, and Pull workflows and includes troubleshooting tips to ensure a smooth experience.
+Real-world scenarios for the AI Project Tracker. Each example uses the **web UI** at [http://localhost:3000](http://localhost:3000). If you're new to the app, read [Your First Project](./FIRST_PROJECT.md) first.
 
 ---
 
 ## Example 1: Software Development Project
 
-### Scenario:
-You’re managing a Python-based AI project using GPT-4 and LangChain for NLP tasks. The project repository includes version control, a README file, and dependencies defined in `requirements.txt`.
+### Scenario
 
-### Workflow:
-1. **Run the Prep Agent**:
-   ```bash
-   npm run prep-agent
-   ```
-2. **Push the Reporter**:
-   ```bash
-   npm run push-reporter
-   ```
-3. **Verify the Workflow**:
-   - Check that `.tracker-config.json` has been generated and includes:
-     ```json
-     {
-       "project_name": "Python NLP Project",
-       "model_used": "GPT-4",
-       "stack": ["Python", "LangChain"]
-     }
-     ```
-   - Confirm that `reporter.py` was added to the project root.
+You're managing a Python-based AI project using GPT-4 and LangChain. The repo has version control, a README, and `requirements.txt`.
 
-### Troubleshooting:
-- **Problem**: Prep Agent does not recognize dependencies.
-  - **Solution**: Ensure `requirements.txt` exists with proper formatting.
-- **Problem**: Reporter is missing fields like `model_used`.
-  - **Solution**: Update the `.tracker-config.json` manually or rerun the Prep Agent.
+### Workflow
+
+1. **Prep the project** — click **PREP AGENT**, enter:
+   - Project Name: `Python NLP Project`
+   - Stack: `Python, LangChain`
+   - Model: `GPT-4`
+   - Click **◈ RUN PREP AGENT**
+2. **Copy handshake file** — from the results, copy `.tracker-config.json` and save it to your Python project's root.
+3. **Generate a Push reporter** — click **REPORTER** → **▲ PUSH MODE**, fill in the same project details, click **▲ GENERATE PUSH REPORTER + LOG FIRST UPDATE**.
+4. **Deploy the script** — copy the generated reporter script into your Python project as `reporter.py`.
+5. **Verify** — click **BOARD** and confirm the project card shows the first update.
+
+### Troubleshooting
+
+- **Prep audit warns on dependencies** — ensure `requirements.txt` exists and lists packages clearly.
+- **Reporter script missing fields** — re-run Prep or edit `.tracker-config.json` manually before copying the Push reporter.
 
 ---
 
 ## Example 2: Data Science Pipeline
 
-### Scenario:
-You’re tracking progress in a data science pipeline using R and Python. Projects are stored as Jupyter Notebooks, and output files are logged in `results/`.
+### Scenario
 
-### Workflow:
-1. **Prep the Data Science Project**:
-   ```bash
-   npm run prep-agent
-   ```
-2. **Pull Updates Automatically**:
-   - Generate a Pull Reporter to inspect the `results/` directory and infer status updates:
-     ```bash
-     npm run pull-reporter
-     ```
-3. **Review and Validate the Updates**:
-   - Ensure updates are parsed correctly:
-     ```json
-     {
-       "type": "progress",
-       "status": "Active",
-       "blockers": [],
-       "next_steps": ["Generate final report"]
-     }
-     ```
+You're tracking a data science pipeline using R and Python. Output lives in a `results/` directory.
 
-### Troubleshooting:
-- **Problem**: Pull Reporter does not detect the `results/` directory.
-  - **Solution**: Check that the directory path is correct and contains valid output.
-- **Problem**: Updates are incomplete or incorrect.
-  - **Solution**: Use Human-In-Loop mode for better context gathering.
+### Workflow
+
+1. **Log a manual update first** — click **LOG UPDATE**, paste a summary of current pipeline status, parse and commit. This creates the project on the Board immediately.
+2. **Prep for compliance** — click **PREP AGENT**, describe the pipeline, note `results/` in **Known Gaps / Issues** if the audit should account for it.
+3. **Pull updates autonomously** — click **REPORTER** → **▼ PULL MODE** → **🤖 Autonomous Pull**, generate the script, and run it inside the pipeline repo so it can inspect files and git history.
+4. **Review on the Board** — confirm parsed updates show `type: progress`, correct status, and next steps.
+
+### Troubleshooting
+
+- **Pull reporter misses `results/`** — autonomous mode scans standard files (README, git log, dependency manifests). Mention output locations in the README or log manual updates via **LOG UPDATE**.
+- **Incomplete updates** — switch to **👤 Human Interview** under Pull mode for richer context.
 
 ---
 
 ## Example 3: Multi-Model Coordination
 
-### Scenario:
-You’re managing a project leveraging Claude AI for text summarization and GPT-4 for chatbot features.
+### Scenario
 
-### Workflow:
-1. **Prepare the Coordination Project**:
-   Run the Prep Agent and verify the `.tracker-config.json`:
-   ```bash
-   npm run prep-agent
-   ```
+You're coordinating Claude (summarization) and GPT-4 (chatbot) on related but separate repos.
 
-2. **Push and Pull Updates**:
-   - Push a Reporter to each model’s respective project:
-     ```bash
-     npm run push-reporter
-     ```
-   - Use the Pull Reporter with Human-In-Loop mode to gather updates for the overall project coordination.
+### Workflow
 
-3. **Integrate Updates**:
-   - Manually merge updates from both models into a master project board.
+1. **Prep each repo separately** — run **PREP AGENT** once per project, copy each `.tracker-config.json` to the respective repo root.
+2. **Push reporters per model** — for each project, use **REPORTER** → **▲ PUSH MODE** with the correct model name and stack. Copy each script to its repo.
+3. **Track coordination manually** — use **LOG UPDATE** to paste cross-model status summaries, or use **Pull** → **Human Interview** for a coordination overview project.
+4. **Monitor on the Board** — each project gets its own card; use status buttons to mark blockers across the fleet.
 
-### Troubleshooting:
-- **Problem**: `prep-agent` fails due to missing interdependencies.
-  - **Solution**: Ensure shared settings or dependencies are well-defined in both projects.
+### Troubleshooting
+
+- **Conflicting project names** — use distinct names per repo so Board cards stay separate.
+- **Shared dependencies** — document shared config in each project's Prep form under **Known Gaps / Issues**.
 
 ---
 
-## Common Adjustments for Niche Scenarios
+## Common adjustments
 
-1. **Adding Custom Fields**:
-   - Modify `.tracker-config.json` to include fields unique to your project.
-2. **Adjusting Pull Reporter Behaviors**:
-   - Specify directories or files to ignore in the reporter’s source code.
-
-### Troubleshooting:
-- **Problem**: New fields are not recognized.
-  - **Solution**: Ensure all workflows are updated to handle custom fields.
+1. **Custom fields in handshake** — edit the copied `.tracker-config.json` before saving to your external repo.
+2. **Manual updates between agent runs** — use **LOG UPDATE** anytime; projects are matched by name.
+3. **Schema prompt for ad-hoc AIs** — **REPORTER** → **◈ PROMPT REF** → copy into any AI tool.
 
 ---
 
-This concludes the example use cases for the AI Project Tracker. For additional support, refer to the [Troubleshooting Guide](./TROUBLESHOOTING.md) or open an issue on GitHub.
+For step-by-step UI instructions, see [Workflows](./WORKFLOWS.md).  
+For issues, see [Troubleshooting](./TROUBLESHOOTING.md).

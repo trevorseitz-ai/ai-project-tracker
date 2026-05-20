@@ -1,5 +1,9 @@
 # Advanced Guides
 
+> **Not current documentation.** This guide describes aspirational features (PostgreSQL, Slack webhooks, etc.) that are **not implemented**. For production deployment today, see [Installation](./INSTALLATION.md) and [Architecture](./ARCHITECTURE.md). For planned work, see [Roadmap](./ROADMAP.md).
+
+---
+
 These advanced guides help you deploy, customize, and integrate the AI Project Tracker into your workflow for maximum efficiency.
 
 ---
@@ -107,4 +111,4 @@ If your project requires additional fields in its configuration:
 
 ---
 
-For additional support, revisit the [Troubleshooting Guide](./TROUBLESHOOTING.md) or [FAQs](./FAQs.md).
+For additional support, revisit the [Troubleshooting Guide](./TROUBLESHOOTING.md) or [Roadmap](./ROADMAP.md).

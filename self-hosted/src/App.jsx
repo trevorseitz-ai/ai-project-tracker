@@ -1,4 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import {
+  loadProjects,
+  saveProjects,
+  normalizeImportedProjects,
+  getTrackerUrl,
+  getAgentKey,
+  applyHandshakeConfig,
+  injectTrackerIntoScript,
+} from "./storage.js";
+import { fetchProjectsFromServer, saveProjectsToServer } from "./api.js";
+import { commitUpdateToProjects } from "../shared/projectLogic.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -271,10 +282,9 @@ function ConfidenceMeter({ value }) {
 // ─── Main App ────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const importInputRef = useRef(null);
   const [tab, setTab] = useState("board");
-  const [projects, setProjects] = useState([
-    { id: uid(), name: "Project Alpha", status: "Active", model: "Claude", updates: [] },
-  ]);
+  const [projects, setProjects] = useState(() => loadProjects());
   const [rawInput, setRawInput] = useState("");
   const [parsing, setParsing] = useState(false);
   const [parsedUpdate, setParsedUpdate] = useState(null);
@@ -309,6 +319,34 @@ export default function App() {
   const [prepResult, setPrepResult] = useState(null);
   const [prepScriptCopied, setPrepScriptCopied] = useState(false);
   const [handshakeCopied, setHandshakeCopied] = useState(false);
+
+  useEffect(() => {
+    saveProjects(projects);
+    const timeout = setTimeout(() => saveProjectsToServer(projects), 300);
+    return () => clearTimeout(timeout);
+  }, [projects]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchProjectsFromServer().then(data => {
+      if (!cancelled && Array.isArray(data) && data.length > 0) {
+        setProjects(data);
+      }
+    });
+
+    const poll = setInterval(async () => {
+      const data = await fetchProjectsFromServer();
+      if (!cancelled && Array.isArray(data)) {
+        setProjects(data);
+      }
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+    };
+  }, []);
 
   function showToast(msg, ok = true) {
     setToast({ msg, ok });
@@ -378,6 +416,32 @@ export default function App() {
     setNewProjectName("");
   }
 
+  function handleImportProjects(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const imported = normalizeImportedProjects(JSON.parse(String(reader.result)));
+        setProjects(imported);
+        setActiveLog(null);
+        showToast(`Imported ${imported.length} project${imported.length === 1 ? "" : "s"} ✓`);
+      } catch (e) {
+        showToast(e.message || "Import failed — invalid JSON", false);
+      }
+      event.target.value = "";
+    };
+    reader.onerror = () => {
+      showToast("Import failed — could not read file", false);
+      event.target.value = "";
+    };
+    reader.readAsText(file);
+  }
+
+  const trackerUrl = getTrackerUrl();
+  const agentKey = getAgentKey();
+
   function copyPrompt() {
     navigator.clipboard.writeText(REPORTER_PROMPT);
     setCopied(true);
@@ -398,7 +462,8 @@ Model: ${pushForm.model || "not specified"}
 Stage: ${pushForm.stage === "new" ? "brand new" : "in progress"}
 Agent type: ${pushForm.agentType}
 ${pushForm.stage === "existing" ? `Existing context: ${pushForm.existingContext}` : ""}
-TRACKER_URL: https://your-tracker.example.com/api/update
+TRACKER_URL: ${trackerUrl}
+AGENT_KEY: ${agentKey}
 Generate the push reporter now.`;
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -413,6 +478,7 @@ Generate the push reporter now.`;
       const data = await res.json();
       const raw = data.content?.map(b => b.text || "").join("") || "{}";
       const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+      if (parsed.agent_script) parsed.agent_script = injectTrackerIntoScript(parsed.agent_script);
       parsed.first_update.id = uid(); parsed.first_update.timestamp = TS();
       setPushResult(parsed);
       commitToBoard(parsed.first_update, pushForm.model);
@@ -433,11 +499,12 @@ Generate the push reporter now.`;
         "anthropic-dangerous-direct-browser-access": "true",
       },
         body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4000, system: PULL_AGENT_SYSTEM,
-          messages: [{ role: "user", content: "Generate the autonomous pull reporter. TRACKER_URL=https://your-tracker.example.com/api/update" }] }),
+          messages: [{ role: "user", content: `Generate the autonomous pull reporter. TRACKER_URL=${trackerUrl} AGENT_KEY=${agentKey}` }] }),
       });
       const data = await res.json();
       const raw = data.content?.map(b => b.text || "").join("") || "{}";
       const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+      if (parsed.agent_script) parsed.agent_script = injectTrackerIntoScript(parsed.agent_script);
       parsed.first_update.id = uid(); parsed.first_update.timestamp = TS();
       setPullResult(parsed);
       commitToBoard(parsed.first_update, null);
@@ -502,13 +569,7 @@ Generate the push reporter now.`;
   }
 
   function commitToBoard(update, model) {
-    setProjects(prev => {
-      const name = update.project || "Unknown";
-      const found = prev.find(p => p.name.toLowerCase() === name.toLowerCase());
-      if (!found) return [...prev, { id: uid(), name, status: update.status || "Active", model: model || update.model_used || "Unknown", updates: [update] }];
-      return prev.map(p => p.name.toLowerCase() === name.toLowerCase()
-        ? { ...p, status: update.status || p.status, updates: [update, ...p.updates] } : p);
-    });
+    setProjects(prev => commitUpdateToProjects(prev, update, model));
   }
 
 
@@ -525,6 +586,8 @@ Current status: ${prepForm.status}
 Known blockers: ${prepForm.blockers || "none stated"}
 Known issues or gaps: ${prepForm.knownIssues || "none stated"}
 Agent mode preference: ${prepForm.agentMode}
+TRACKER_URL: ${trackerUrl}
+AGENT_KEY: ${agentKey}
 Timestamp: ${TS()}
 
 Run the full compliance audit and generate the prep agent now.`;
@@ -541,6 +604,8 @@ Run the full compliance audit and generate the prep agent now.`;
       const data = await res.json();
       const raw = data.content?.map(b => b.text || "").join("") || "{}";
       const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+      if (parsed.handshake_file) parsed.handshake_file = applyHandshakeConfig(parsed.handshake_file);
+      if (parsed.prep_script) parsed.prep_script = injectTrackerIntoScript(parsed.prep_script);
       parsed.compliance_update.id = uid();
       parsed.compliance_update.timestamp = TS();
       setPrepResult(parsed);
@@ -1303,17 +1368,23 @@ Run the full compliance audit and generate the prep agent now.`;
         {tab === "agent" && (
           <div>
             <div style={S.sectionTitle}>AGENT INTEGRATION SPEC</div>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json,.json"
+              style={{ display: "none" }}
+              onChange={handleImportProjects}
+            />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
               <div style={S.card}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: "#6EE7B7", marginBottom: 10, letterSpacing: "0.1em" }}>WEBHOOK ENDPOINT FORMAT</div>
                 <div style={{ fontSize: 11, color: "#94A3B8", marginBottom: 12 }}>
-                  Any reporting agent can POST a structured JSON update directly to your tracker.
-                  Use this spec to configure your agent's output step.
+                  Agents POST updates to this live endpoint. The UI syncs with the same backend every few seconds.
                 </div>
-                <div style={S.promptBox}>{`// Agent posts to your tracker endpoint:
-POST /api/project-update
+                <div style={S.promptBox}>{`// Configured tracker endpoint:
+POST ${trackerUrl}
 Content-Type: application/json
-X-Agent-Key: your-agent-key
+X-Agent-Key: ${agentKey}
 
 // Body (same schema as reporter prompt):
 {
@@ -1372,9 +1443,9 @@ if (project.status === "Blocked") {
               </div>
 
               <div style={S.card}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#C4B5FD", marginBottom: 10, letterSpacing: "0.1em" }}>EXPORT CURRENT PROJECTS</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#C4B5FD", marginBottom: 10, letterSpacing: "0.1em" }}>EXPORT / IMPORT PROJECTS</div>
                 <div style={{ fontSize: 11, color: "#94A3B8", marginBottom: 12 }}>
-                  Export all project data as JSON to hand off to an agent or another tool.
+                  Projects persist on the server (<code style={{ color: "#E2E8F0" }}>data/projects.json</code>) and in this browser. Export/import for backup or migration.
                 </div>
                 <button style={S.btn()} onClick={() => {
                   const blob = new Blob([JSON.stringify(projects, null, 2)], { type: "application/json" });
@@ -1382,7 +1453,10 @@ if (project.status === "Blocked") {
                   const a = document.createElement("a"); a.href = url; a.download = "projects.json"; a.click();
                   showToast("Exported as projects.json");
                 }}>⬇ EXPORT JSON</button>
-                <div style={{ marginTop: 10 }}>
+                <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button style={{ ...S.btn("ghost") }} onClick={() => importInputRef.current?.click()}>
+                    ⬆ IMPORT JSON
+                  </button>
                   <button style={{ ...S.btn("ghost") }} onClick={() => {
                     const md = projects.map(p =>
                       `# ${p.name}\n**Status:** ${p.status} | **Model:** ${p.model}\n\n` +

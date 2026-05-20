@@ -15,6 +15,9 @@ build/
 # Vite cache
 .vite/
 
+# Server-side project data (webhook API persistence)
+self-hosted/data/
+
 # Editor directories
 .vscode/
 .idea/

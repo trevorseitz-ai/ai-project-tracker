@@ -1,22 +1,46 @@
 # API Reference
 
-This document provides details on the API endpoints exposed by the AI Project Tracker. Use this reference to integrate the tracker into your workflows and applications.
+Live HTTP API for the self-hosted tracker. Agents POST updates here; the React UI reads and writes the same data.
+
+See also the [Architecture](./ARCHITECTURE.md) guide for how the server and UI fit together.
 
 ---
 
 ## Base URL
-- For self-hosted deployments: `http://localhost:3000`
-- For production deployments: Replace `localhost` with your hosted domain (e.g., `https://tracker.example.com`).
+
+| Environment | URL |
+|---|---|
+| **Development** | `http://localhost:3000` (Vite UI proxies `/api` → API on `:3001`) |
+| **Production** | `npm run build && npm start` serves UI + API on one port (default `:3000`) |
+
+Set `VITE_TRACKER_URL` in `.env` so generated reporters and handshake files point at your endpoint (default: `http://localhost:3000/api/project-update`).
+
+---
+
+## Authentication
+
+Agent endpoints require:
+
+```http
+X-Agent-Key: <your-agent-key>
+```
+
+Set `VITE_AGENT_KEY` in `self-hosted/.env` (default: `dev-agent-key`). The server reads `AGENT_KEY` or `VITE_AGENT_KEY` — **client and server must match**.
+
+UI endpoints (`GET` / `PUT /api/projects`) do not require a key (intended for local/trusted use). Change the default agent key before exposing the tracker to a network.
 
 ---
 
 ## Endpoints
 
-### 1. `POST /api/project-update`
-#### Description:
-Endpoint for sending project updates to the tracker.
+### `POST /api/project-update`
 
-#### Request Body:
+Log an update from an autonomous agent or external reporter script.
+
+**Required body fields:** `type`, `project`, `summary`, `status`
+
+**Optional:** `detail`, `model_used`, `blockers`, `next_steps`, `confidence`, `missing_fields`, `id`, `timestamp`
+
 ```json
 {
   "type": "feature|tool|daily|blocker|progress",
@@ -25,96 +49,127 @@ Endpoint for sending project updates to the tracker.
   "detail": "full description",
   "model_used": "AI model or service",
   "status": "Active|Blocked|Stalled|Complete",
-  "blockers": ["..."],
-  "next_steps": ["..."],
-  "confidence": 0.0,
-  "missing_fields": ["..."]
+  "blockers": [],
+  "next_steps": [],
+  "confidence": 0.9,
+  "missing_fields": []
 }
 ```
 
-#### Headers:
-- `Content-Type: application/json`
-- `X-Agent-Key: your-agent-key`
+| Status | Meaning |
+|---|---|
+| `200` | `{ "message": "Update received successfully." }` |
+| `400` | Invalid or missing fields |
+| `401` | Missing or wrong `X-Agent-Key` |
 
-#### Response:
-- **200 OK**: The update was successfully logged.
-  ```json
-  {
-    "message": "Update received successfully."
-  }
-  ```
-- **400 Bad Request**: Missing or invalid fields.
-  ```json
-  {
-    "error": "Invalid request body."
-  }
-  ```
-- **401 Unauthorized**: Invalid or missing agent key.
+**Example:**
 
-#### Example:
 ```bash
-curl -X POST http://localhost:3000/api/project-update \  
--H "Content-Type: application/json" \  
--H "X-Agent-Key: my-agent-key" \  
--d '{
-  "type": "feature",
-  "project": "AI Tracker",
-  "summary": "Integrated a new Slack notification feature.",
-  "detail": "Slack notifications are now sent for all blockers.",
-  "model_used": "ChatGPT",
-  "status": "Active",
-  "blockers": [],
-  "next_steps": ["Test notifications"],
-  "confidence": 1.0,
-  "missing_fields": []
-}'
+curl -X POST http://localhost:3000/api/project-update \
+  -H "Content-Type: application/json" \
+  -H "X-Agent-Key: dev-agent-key" \
+  -d '{
+    "type": "daily",
+    "project": "My Agent",
+    "summary": "Completed webhook integration test",
+    "detail": "Verified POST lands on the board",
+    "status": "Active",
+    "confidence": 0.95
+  }'
 ```
+
+The UI polls the server every few seconds — new agent updates appear on the **BOARD** automatically.
 
 ---
 
-### 2. `GET /api/project-status`
-#### Description:
-Retrieve the current status of a project being tracked.
+### `GET /api/projects`
 
-#### Parameters:
-- **Query**:
-  - `project`: The name of the project (required).
+Returns the full project list (same shape as exported `projects.json`). Used by the UI on load and sync.
 
-#### Headers:
-- `X-Agent-Key: your-agent-key`
+No authentication required.
 
-#### Response:
-- **200 OK**: Project status returned successfully.
-  ```json
-  {
-    "project_name": "AI Tracker",
-    "status": "Active",
-    "blockers": ["Integration tests failing"],
-    "next_steps": ["Fix failing tests"],
-    "last_update": "2026-05-10T12:34:00.000Z"
-  }
-  ```
-- **404 Not Found**: The requested project does not exist.
-- **401 Unauthorized**: Invalid or missing agent key.
+---
 
-#### Example:
-```bash
-curl -X GET http://localhost:3000/api/project-status?project=AI+Tracker \  
--H "X-Agent-Key: my-agent-key"
+### `PUT /api/projects`
+
+Replace the full project list from the UI. Body: JSON array of projects, or `{ "projects": [...] }`.
+
+No authentication required.
+
+---
+
+### `GET /api/project-status`
+
+Poll a single project's status. Requires `X-Agent-Key`.
+
+**Query:** `?project=Project+Name`
+
+**Response (200):**
+
+```json
+{
+  "project_name": "My Agent",
+  "status": "Active",
+  "blockers": [],
+  "next_steps": ["Run eval suite"],
+  "last_update": "2026-05-19T12:00:00.000Z"
+}
 ```
+
+| Status | Meaning |
+|---|---|
+| `404` | Project not found |
+| `401` | Invalid agent key |
+
+---
+
+### `GET /api/project/:name/updates`
+
+Returns update timeline for a project. Requires `X-Agent-Key`. URL-encode project names with spaces.
+
+---
+
+### `GET /api/health`
+
+Returns `{ "ok": true }`. Useful for smoke checks.
+
+---
+
+## Update schema
+
+All updates — pasted in the UI, generated by reporters, or POSTed by agents — share this schema:
+
+| Field | Required | Values |
+|---|---|---|
+| `type` | yes | `feature`, `tool`, `daily`, `blocker`, `progress` |
+| `project` | yes | string |
+| `summary` | yes | string (one sentence) |
+| `status` | yes | `Active`, `Blocked`, `Stalled`, `Complete` |
+| `detail` | no | string |
+| `model_used` | no | string or null |
+| `blockers` | no | string array |
+| `next_steps` | no | string array |
+| `confidence` | no | 0.0–1.0 |
+| `missing_fields` | no | string array |
+
+The server assigns `id` and `timestamp` if omitted.
+
+---
+
+## Persistence
+
+Project data is stored in `self-hosted/data/projects.json` on the server. The browser also caches in `localStorage` as a fallback when the API is unreachable.
 
 ---
 
 ## Troubleshooting
 
-### Common Issues
-**Problem**: `401 Unauthorized` when calling an endpoint.
-- **Solution**: Ensure the `X-Agent-Key` header is included and contains a valid key.
+| Problem | Fix |
+|---|---|
+| `401 Unauthorized` | Match `X-Agent-Key` to `VITE_AGENT_KEY` in `.env` |
+| `400 Bad Request` | Check required fields and valid `type` / `status` enums |
+| `404` on status | Project name must match exactly (case-insensitive match on server) |
+| POST succeeds but UI doesn't update | Ensure `npm run dev` is running (both API and UI), not `dev:client` alone |
+| Connection refused | Start API: `npm run dev` or `npm run dev:server` |
 
-**Problem**: `400 Bad Request` when sending a project update.
-- **Solution**: Double-check the request body for missing or invalid fields. Use the example JSON as a template.
-
-**Problem**: `404 Not Found` for `GET /api/project-status`.
-- **Solution**: Verify that the project name exists in the tracker and is spelled correctly.
-
-For further assistance, see the [Troubleshooting Guide](./TROUBLESHOOTING.md).
+See [Troubleshooting](./TROUBLESHOOTING.md) for more.

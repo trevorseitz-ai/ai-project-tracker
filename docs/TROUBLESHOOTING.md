@@ -1,102 +1,106 @@
 # Troubleshooting Guide
 
-This document provides solutions to common issues you may encounter while using the AI Project Tracker. It is organized by setup and workflows.
+Common issues for setup, the webhook API, and UI workflows.
 
 ---
 
-## Issues During Setup
+## Setup
 
-### Cloning the Repository
-**Problem**: `Permission denied (publickey)` when cloning the repository.
-- **Solution**: Verify that your SSH key is added to your GitHub account. Alternatively, use the HTTPS URL to clone the repository:
-  ```bash
-  git clone https://github.com/trevorseitz-ai/ai-project-tracker.git
-  ```
+### Clone / install
 
-**Problem**: `git` is not recognized as a command.
-- **Solution**: Install Git from [here](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git).
+| Problem | Solution |
+|---|---|
+| `git` not found | [Install Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git) |
+| `npm install` fails | Node 18+; try `npm cache clean --force` |
+| Permission denied cloning | Use HTTPS URL or check GitHub SSH keys |
 
-### Installing Dependencies
-**Problem**: Dependency installation fails with errors about incompatible Node.js versions.
-- **Solution**: Ensure you are using Node.js version 18 or higher. You can check your version with:
-  ```bash
-  node -v
-  ```
-  To install the recommended version, visit [Node.js Downloads](https://nodejs.org/).
+### Environment
 
-**Problem**: `npm install` hangs or exits with network errors.
-- **Solution**:
-  - Clear npm’s cache:
-    ```bash
-    npm cache clean --force
-    ```
-  - Retry `npm install`.
-  - Check your network connection and proxy settings.
+| Problem | Solution |
+|---|---|
+| AI features don't work | Set `VITE_ANTHROPIC_API_KEY` in `self-hosted/.env`, restart `npm run dev` |
+| Agent POST returns 401 | Set `VITE_AGENT_KEY` in `.env`; send same value as `X-Agent-Key` header |
+| Wrong webhook URL in scripts | Set `VITE_TRACKER_URL=http://localhost:3000/api/project-update` |
 
-### Starting the Application
-**Problem**: `Error: missing .env file`.
-- **Solution**: Ensure you’ve created the `.env` file:
-  ```bash
-  cp .env.example .env
-  ```
-  Add your API key in the format:
-  ```plaintext
-  ANTHROPIC_API_KEY=your-api-key-here
-  ```
+### Starting the app
 
-**Problem**: Nothing loads at [http://localhost:3000](http://localhost:3000).
-- **Solution**:
-  - Check the terminal for error messages.
-  - Ensure no other processes are using port 3000. If port conflicts occur, terminate the other process.
+| Problem | Solution |
+|---|---|
+| Nothing at localhost:3000 | Run `npm run dev` from `self-hosted/`; check ports 3000 and 3001 |
+| UI works, API calls fail | Don't run `dev:client` alone — need `npm run dev` or `dev:server` |
+| Port in use | Stop other processes on 3000/3001 or set `PORT` for production |
 
 ---
 
-## Workflow-Specific Issues
+## Webhook API
 
-### Prep Agent Issues
-**Problem**: `Prep Agent failed: missing README`.
-- **Solution**: Add a README file to your project root and retry.
+| Problem | Solution |
+|---|---|
+| `curl` to `/api/project-update` fails | API must be running; use port 3000 in dev (proxied) |
+| 401 Unauthorized | Header: `X-Agent-Key: dev-agent-key` (or your `VITE_AGENT_KEY`) |
+| 400 Bad Request | Required: `type`, `project`, `summary`, `status` with valid enum values |
+| Update POST succeeds, board unchanged | Wait ~5s for poll, or refresh; confirm `npm run dev` not client-only |
+| Data lost after reinstall | Server data is in `self-hosted/data/projects.json`; back up that file |
 
-**Problem**: No `.tracker-config.json` is generated.
-- **Solution**: Ensure your project has the required files (README, git history, etc.). Check the console logs for detailed errors.
+Test with:
 
-### Push Reporter Issues
-**Problem**: `Push Reporter failed: missing .tracker-config.json`.
-- **Solution**: Ensure the Prep Agent successfully generated `.tracker-config.json`.
+```bash
+curl -X POST http://localhost:3000/api/project-update \
+  -H "Content-Type: application/json" \
+  -H "X-Agent-Key: dev-agent-key" \
+  -d '{"type":"daily","project":"Test","summary":"Webhook test update","status":"Active"}'
+```
 
-**Problem**: `reporter.py` file is not created.
-- **Solution**: Verify write permissions for the project directory and check the console for errors.
+See [API Reference](./API_REFERENCE.md).
 
-### Pull Reporter Issues
-**Problem**: Pull Reporter fails to analyze the project.
-- **Solution**: Ensure the project folder contains standard files like `README` and `package.json`. For Python projects, ensure `requirements.txt` is present.
+---
 
-**Problem**: Interactive mode does not proceed.
-- **Solution**: Update Node.js to the latest version supported by the tracker, and retry.
+## UI workflows
+
+All workflows run in the browser at [http://localhost:3000](http://localhost:3000). See [Your First Project](./FIRST_PROJECT.md) and [Workflows](./WORKFLOWS.md).
+
+### Prep Agent
+
+| Problem | Solution |
+|---|---|
+| **◈ RUN PREP AGENT** fails | Check Anthropic key, credits, browser console |
+| Low audit scores | Follow fix list; add README, git, dependencies to external repo |
+| Handshake missing URL/key | Set `VITE_TRACKER_URL` and `VITE_AGENT_KEY` in `.env`, re-run Prep |
+
+### Push / Pull Reporter
+
+| Problem | Solution |
+|---|---|
+| Generate button disabled | Fill required fields (project name, description for Push) |
+| Script has placeholder URL | Re-generate after setting `VITE_TRACKER_URL` in `.env` |
+| Pull script finds no context | External repo needs README, git history, dependency files |
+
+### Log Update
+
+| Problem | Solution |
+|---|---|
+| Parse fails | Valid API key; pasted text must describe real work |
+| Wrong project on board | Edit **project** field before **✓ COMMIT UPDATE** |
+
+---
+
+## Import / export
+
+| Problem | Solution |
+|---|---|
+| Import fails | File must be a JSON array of projects or `{ "projects": [...] }` with valid structure |
+| Export empty | Add projects first; export from **AGENT API** tab |
 
 ---
 
 ## General
-**Problem**: `EACCES` permission errors during commands.
-- **Solution**:
-  - Use `sudo` for administrative privileges (Linux/Mac):
-    ```bash
-    sudo npm install
-    ```
-  - On Windows, run the terminal as Administrator.
 
-**Problem**: Application crashes with stack trace related to Node.js modules.
-- **Solution**: Reinstall dependencies to ensure they're correctly installed:
-  ```bash
-  npm ci
-  ```
-
-**Problem**: You’re stuck and can’t find the issue.
-- **Solution**: Open an issue on the [GitHub repository](https://github.com/trevorseitz-ai/ai-project-tracker/issues) and provide details including:
-  - Steps to reproduce the problem.
-  - Error logs or screenshots.
-  - Your system environment (OS, Node.js version).
+| Problem | Solution |
+|---|---|
+| `EACCES` on npm install | Fix directory permissions; avoid unnecessary `sudo` |
+| Module errors | `rm -rf node_modules && npm ci` |
+| Still stuck | [Open an issue](https://github.com/trevorseitz-ai/ai-project-tracker/issues) with OS, Node version, and terminal output |
 
 ---
 
-For additional support, please refer to the [FAQs](./FAQs.md).
+See also [Testing](./TESTING.md) for automated checks and [Roadmap](./ROADMAP.md) for features not yet built.

@@ -23,7 +23,7 @@ The first step is to get a copy of the repository on your local machine.
 - **Problem**: `git` is not recognized as a command.
   - **Solution**: [Install Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git).
 - **Problem**: Permission denied when cloning.
-  - **Solution**: Ensure you have access to the repository. If it’s private, check your GitHub authentication.
+  - **Solution**: Ensure you have access to the repository. If it's private, check your GitHub authentication.
 
 ---
 
@@ -58,14 +58,19 @@ The app requires an API key for full functionality.
    ```bash
    cp .env.example .env
    ```
-2. Open the `.env` file in a text editor and add your Anthropic API key:
+2. Open the `.env` file in a text editor and set:
+
    ```plaintext
-   ANTHROPIC_API_KEY=your-api-key-here
+   VITE_ANTHROPIC_API_KEY=your-api-key-here
+   VITE_TRACKER_URL=http://localhost:3000/api/project-update
+   VITE_AGENT_KEY=dev-agent-key
    ```
+
+   See `.env.example` for descriptions. Change `VITE_AGENT_KEY` before exposing the tracker to a network.
 3. Save the file and close the editor.
 
 ### Troubleshooting:
-- **Problem**: You don’t have an API key.
+- **Problem**: You don't have an API key.
   - **Solution**: Generate a key from the [Anthropic Console](https://console.anthropic.com/keys).
 
 ---
@@ -73,19 +78,35 @@ The app requires an API key for full functionality.
 ## Step 4: Starting the Application
 
 ### Instructions:
-1. Run the development server:
+1. Start both the API server and the UI:
    ```bash
    npm run dev
    ```
-2. Open your browser and navigate to:
+   This runs the Express API on port **3001** and Vite on port **3000** (API proxied at `/api`).
+
+2. Open your browser:
    [http://localhost:3000](http://localhost:3000)
 
 ### Troubleshooting:
-- **Problem**: The server doesn’t start.
-  - **Solution**: Check the console for errors and ensure all previous steps were completed.
+- **Problem**: The server doesn't start.
+  - **Solution**: Check the terminal for errors. Ensure ports 3000 and 3001 are free.
+- **Problem**: UI loads but agent POSTs fail / board doesn't sync.
+  - **Solution**: Don't use `npm run dev:client` alone — the API must be running (`npm run dev` or `npm run dev:server` in another terminal).
 - **Problem**: Cannot connect to `localhost`.
   - **Solution**: Ensure no other applications are using port 3000.
 
 ---
 
-You’ve now completed the initial setup and can start using the AI Project Tracker! If you encounter additional issues, refer to the [Troubleshooting Guide](./TROUBLESHOOTING.md).
+## Step 5: Set Up Your First Project
+
+The app is running — next, add a tracked project and log your first update.
+
+### Instructions
+
+1. Open [http://localhost:3000](http://localhost:3000).
+2. On the **BOARD** tab, type a project name and click **+ ADD**, **or** use **LOG UPDATE** to paste a work summary and commit a parsed update.
+3. Continue with [Your First Project](./FIRST_PROJECT.md) for the full walkthrough (manual logging vs connecting an external repo with Prep and Reporter agents).
+
+---
+
+You've completed the initial setup! For agent workflows, see [Workflows](./WORKFLOWS.md). If you encounter issues, refer to the [Troubleshooting Guide](./TROUBLESHOOTING.md).

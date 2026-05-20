@@ -7,7 +7,7 @@ export default defineConfig({
     // Use jsdom to simulate a browser environment for React component tests
     environment: "jsdom",
     globals: true,
-    setupFiles: ["./vitest.setup.js"],
+    setupFiles: ["tests/vitest.setup.js"],
     // Separate reporters for readable terminal output
     reporters: ["verbose"],
     // Coverage settings — run with: npm run test:coverage

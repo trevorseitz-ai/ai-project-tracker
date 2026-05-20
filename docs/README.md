@@ -10,8 +10,9 @@ Guides for the AI Project Tracker, in the order most people should read them.
 |---|-------|-------------------|
 | 1 | [Getting Started](./GETTING_STARTED.md) | Clone the repo, install dependencies, configure `.env`, and run the app |
 | 2 | [Installation](./INSTALLATION.md) | Claude Artifact vs self-hosted setup, prerequisites, and deployment basics |
-| 3 | [Workflows](./WORKFLOWS.md) | Prep Agent, Push Reporter, and Pull Reporter — the core day-to-day usage |
-| 4 | [Examples](./EXAMPLES.md) | Real-world scenarios for software projects, data pipelines, and multi-model setups |
+| 3 | [Your First Project](./FIRST_PROJECT.md) | Add a project on the Board, log updates, and connect an external repo |
+| 4 | [Workflows](./WORKFLOWS.md) | Prep Agent, Push Reporter, and Pull Reporter — the core day-to-day usage |
+| 5 | [Examples](./EXAMPLES.md) | Real-world scenarios for software projects, data pipelines, and multi-model setups |
 
 ---
 
@@ -19,8 +20,8 @@ Guides for the AI Project Tracker, in the order most people should read them.
 
 | # | Guide | What you'll learn |
 |---|-------|-------------------|
-| 5 | [Architecture](./ARCHITECTURE.md) | Folder structure, key components, and how the agents interact |
-| 6 | [API Reference](./API_REFERENCE.md) | Update schema, endpoints, and integration contracts for autonomous agents |
+| 6 | [Architecture](./ARCHITECTURE.md) | Folder structure, key components, and how the agents interact |
+| 7 | [API Reference](./API_REFERENCE.md) | Update schema, endpoints, and integration contracts for autonomous agents |
 
 ---
 
@@ -28,8 +29,8 @@ Guides for the AI Project Tracker, in the order most people should read them.
 
 | # | Guide | What you'll learn |
 |---|-------|-------------------|
-| 7 | [Testing](./TESTING.md) | Unit, security, and AI prompt tests — what to run and when |
-| 8 | [Troubleshooting](./TROUBLESHOOTING.md) | Common setup and runtime issues with fixes |
+| 8 | [Testing](./TESTING.md) | Unit, security, and AI prompt tests — what to run and when |
+| 9 | [Troubleshooting](./TROUBLESHOOTING.md) | Common setup and runtime issues with fixes |
 
 ---
 
@@ -37,16 +38,20 @@ Guides for the AI Project Tracker, in the order most people should read them.
 
 | # | Guide | What you'll learn |
 |---|-------|-------------------|
-| 9 | [Advanced Guides](./ADVANCED_GUIDES.md) | Production deployment, customization, and persistent storage |
-| 10 | [Advanced Integrations](./ADVANCED_INTEGRATIONS.md) | CI/CD hooks, Slack, Jira, and other management-tool integrations |
-| 11 | [Localization](./LOCALIZATION.md) | i18n setup, locale files, and date/number formatting |
+| 10 | [Roadmap](./ROADMAP.md) | What's implemented vs planned (Slack, i18n, multi-user, etc.) |
+
+Legacy guides (aspirational — see Roadmap before using):
+
+- [Advanced Guides](./ADVANCED_GUIDES.md)
+- [Advanced Integrations](./ADVANCED_INTEGRATIONS.md)
+- [Localization](./LOCALIZATION.md)
 
 ---
 
 ## Quick paths
 
 **First time running the app?**  
-[Getting Started](./GETTING_STARTED.md) → [Workflows](./WORKFLOWS.md)
+[Getting Started](./GETTING_STARTED.md) → [Your First Project](./FIRST_PROJECT.md) → [Workflows](./WORKFLOWS.md)
 
 **Integrating an autonomous agent?**  
 [API Reference](./API_REFERENCE.md) → [Examples](./EXAMPLES.md)
@@ -55,7 +60,7 @@ Guides for the AI Project Tracker, in the order most people should read them.
 [Troubleshooting](./TROUBLESHOOTING.md)
 
 **Deploying to production?**  
-[Advanced Guides](./ADVANCED_GUIDES.md) → [Advanced Integrations](./ADVANCED_INTEGRATIONS.md)
+[Installation](./INSTALLATION.md) (production section) → [Architecture](./ARCHITECTURE.md) → [Roadmap](./ROADMAP.md)
 
 ---
 

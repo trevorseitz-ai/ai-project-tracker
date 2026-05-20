@@ -1,77 +1,113 @@
 # Installation Guide
 
-This document provides a step-by-step guide for installing and running the AI Project Tracker.
+How to install and run the AI Project Tracker — Claude Artifact (zero setup) or self-hosted (local API + UI).
 
 ---
 
 ## Prerequisites
-### Software Requirements
-- **Node.js 18+**: [Download and install Node.js](https://nodejs.org/)
-- **npm**: Comes bundled with Node.js.
 
-### Account Requirements
-- **Anthropic API Key**: Required for the self-hosted version. Obtain it from the [Anthropic Console](https://console.anthropic.com/keys).
+### Software
+- **Node.js 18+** (CI uses Node 24)
+- **npm** (bundled with Node.js)
 
-### Optional
-- **Claude.ai Subscription**: If you choose the Claude Artifact setup.
+### Accounts
+- **Anthropic API key** — required for self-hosted AI features ([console.anthropic.com/keys](https://console.anthropic.com/keys))
+- **Claude.ai subscription** — optional, only for the Artifact path
 
 ---
 
-## Installation Options
-### Option A: Claude Artifact (No Setup Required)
-1. Navigate to [claude.ai](https://claude.ai).
-2. Copy the contents of the `claude-artifact/App.jsx` file from this repository.
-3. Paste the content into a new message on Claude.ai, asking it to render it as a React artifact.
-4. The app will run immediately — no API key or further setup is required.
+## Option A: Claude Artifact (no install)
 
-### Option B: Self-Hosted Setup (Local or Deployed)
-#### Step 1: Clone the Repository
-Open your terminal and run the following command:
+1. Open [claude.ai](https://claude.ai).
+2. Copy `claude-artifact/App.jsx` from this repository.
+3. Ask Claude to render it as a React artifact.
+
+Runs immediately — no API key, no backend. Data is in-memory in the artifact session only.
+
+---
+
+## Option B: Self-hosted
+
+### 1. Clone and install
+
 ```bash
 git clone https://github.com/trevorseitz-ai/ai-project-tracker.git
-```
-Change into the project directory:
-```bash
 cd ai-project-tracker/self-hosted
-```
-
-#### Step 2: Install Dependencies
-Install the required dependencies:
-```bash
 npm install
 ```
 
-#### Step 3: Configure Environment Variables
-Copy the example environment file and update it:
+### 2. Configure environment
+
 ```bash
 cp .env.example .env
 ```
-Edit the `.env` file to add your Anthropic API key:
+
+Edit `.env`:
+
 ```plaintext
-ANTHROPIC_API_KEY=your-api-key-here
+VITE_ANTHROPIC_API_KEY=sk-ant-your-key-here
+VITE_TRACKER_URL=http://localhost:3000/api/project-update
+VITE_AGENT_KEY=dev-agent-key
 ```
 
-#### Step 4: Start the Development Server
-Run the app locally:
+| Variable | Purpose |
+|---|---|
+| `VITE_ANTHROPIC_API_KEY` | AI parse, prep, reporter generation (browser) |
+| `VITE_TRACKER_URL` | Injected into handshake files and generated scripts |
+| `VITE_AGENT_KEY` | Must match server; used in `X-Agent-Key` header |
+
+### 3. Run (development)
+
 ```bash
 npm run dev
 ```
-Open your browser and navigate to [http://localhost:3000](http://localhost:3000).
+
+| Process | Port | Role |
+|---|---|---|
+| Vite (web) | 3000 | React UI — open this in your browser |
+| Express (api) | 3001 | Webhook API — proxied via `/api` in dev |
+
+### 4. Run (production)
+
+```bash
+npm run build
+npm start
+```
+
+Serves the built UI and API on port **3000** (override with `PORT`).
+
+### 5. First project
+
+See [Your First Project](./FIRST_PROJECT.md).
+
+---
+
+## npm scripts
+
+| Script | Description |
+|---|---|
+| `npm run dev` | API + UI together (recommended) |
+| `npm run dev:client` | UI only — no webhook API |
+| `npm run dev:server` | API only |
+| `npm run build` | Production frontend build |
+| `npm start` | Production server (UI + API) |
+| `npm test` | Unit tests |
+| `npm run test:security` | Security tests |
 
 ---
 
 ## Troubleshooting
-### Common Issues
-1. **Node.js Version Errors**:
-   - Ensure you have Node.js 18 or higher installed.
-2. **Dependency Installation Fails**:
-   - Run `npm cache clean --force` and retry `npm install`.
-3. **Server Doesn’t Start**:
-   - Double-check your `.env` file for the correct API key.
 
-### Need More Help?
-Check out the [Troubleshooting Guide](./TROUBLESHOOTING.md) for more details.
+| Issue | Fix |
+|---|---|
+| Node version errors | Use Node 18+ (`node -v`) |
+| `npm install` fails | `npm cache clean --force` then retry |
+| AI buttons fail | Check `VITE_ANTHROPIC_API_KEY`, restart dev server |
+| Agent POST 401 | Match `X-Agent-Key` to `VITE_AGENT_KEY` in `.env` |
+| Board doesn't sync | Run `npm run dev`, not `dev:client` alone |
+
+See [Troubleshooting Guide](./TROUBLESHOOTING.md).
 
 ---
 
-You’re now ready to use the AI Project Tracker!
+Next: [Your First Project](./FIRST_PROJECT.md) → [Workflows](./WORKFLOWS.md)

@@ -1,5 +1,9 @@
 # Localization Guide
 
+> **Not implemented.** The app has no `locales/` directory or i18n system. English-only UI today. See [Roadmap](./ROADMAP.md).
+
+---
+
 This guide provides instructions on how to localize the AI Project Tracker for different languages and regions. Localization ensures that the application can adapt to the needs of diverse users around the globe.
 
 ---

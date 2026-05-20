@@ -1,6 +1,19 @@
 import { vi } from "vitest";
 import "@testing-library/jest-dom";
 
+// ── localStorage mock (Node test runs) ───────────────────────────────────────
+const localStorageMock = (() => {
+  let store = {};
+  return {
+    getItem: (key) => (key in store ? store[key] : null),
+    setItem: (key, value) => { store[key] = String(value); },
+    removeItem: (key) => { delete store[key]; },
+    clear: () => { store = {}; },
+  };
+})();
+
+Object.defineProperty(globalThis, "localStorage", { value: localStorageMock, writable: true });
+
 // ── Mock browser APIs not available in jsdom ─────────────────────────────────
 
 // Clipboard API
@@ -42,4 +55,5 @@ afterAll(() => {
 // ── Reset all mocks between tests ─────────────────────────────────────────────
 afterEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
 });
