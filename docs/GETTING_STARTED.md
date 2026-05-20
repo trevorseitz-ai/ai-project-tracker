@@ -43,20 +43,22 @@ cp .env.example .env
 ```
 
 2. Open `.env` in any text editor (Notepad, VS Code, etc.).
-3. Paste your Anthropic key on this line:
+3. Find this line and replace the placeholder with your real Anthropic key:
 
 ```plaintext
-VITE_ANTHROPIC_API_KEY=sk-ant-paste-your-real-key-here
+VITE_ANTHROPIC_API_KEY=sk-ant-your-key-here
 ```
 
-4. Leave these two lines as they are for local use:
+4. Save the file. You do **not** need to change anything else for local use.
+
+The copied file already includes:
 
 ```plaintext
 VITE_TRACKER_URL=http://localhost:3000/api/project-update
 VITE_AGENT_KEY=dev-agent-key
 ```
 
-5. Save the file.
+**If your `.env` is missing those last two lines** (for example, you created it before they were added), paste them in anywhere and save. The app uses the same defaults if they are omitted, but having them in the file keeps generated scripts in sync.
 
 ---
 
@@ -85,7 +87,7 @@ Setup is done. Continue to **[Your First Project](./FIRST_PROJECT.md)** to add a
 | Problem | What to try |
 |---------|-------------|
 | `git` or `npm` not found | Install Git or Node.js (see links above) |
-| Page won't load | Make sure `npm run dev` is still running |
+| Page won't load | Make sure `npm run dev` is still running and you see both **api** and **web** in the terminal |
 | AI buttons don't work | Check your API key in `.env`, save the file, stop the app (Ctrl+C), run `npm run dev` again |
 | Port already in use | Close other apps using port 3000, or restart your computer |
 

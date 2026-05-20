@@ -132,8 +132,8 @@ export function createApp({ staticDir } = {}) {
 }
 
 export async function startServer() {
-  const port = Number(process.env.PORT || (isProd ? 3000 : 3001));
   const isProd = process.env.NODE_ENV === "production";
+  const port = Number(process.env.PORT || (isProd ? 3000 : 3001));
   const staticDir = isProd ? path.join(__dirname, "../dist") : null;
   const app = createApp({ staticDir });
 

@@ -37,10 +37,13 @@ No extra folders or scripts needed.
 
 1. Go to [http://localhost:3000](http://localhost:3000).
 2. You should be on **BOARD** (top menu).
-3. Type a name (e.g. `History Essay Bot`) in **New project name…**
-4. Click **+ ADD**.
+3. You may see a sample card called **Project Alpha** — that's normal. Add your own project below it.
+4. Type a name (e.g. `History Essay Bot`) in **New project name…**
+5. Click **+ ADD**.
 
 You will see a card for your project.
+
+**Tip:** You can also skip **+ ADD** and go straight to **LOG UPDATE** — committing an update with a new project name creates a card automatically.
 
 ### Step 2: Log an update
 
@@ -90,7 +93,7 @@ Pick **one** option:
 **Option A — Push (you know the project details)**
 
 1. Click **REPORTER** → **▲ PUSH MODE**.
-2. Fill in project name and description.
+2. Fill in **Project Name** and **What it does** (required).
 3. Click **▲ GENERATE PUSH REPORTER + LOG FIRST UPDATE**.
 4. Copy the script and save it in your outside project (e.g. `reporter.py`).
 
@@ -123,9 +126,50 @@ Pick **one** option:
 
 ---
 
+## Where your data lives
+
+When you shut down your computer, your projects **do not disappear**. They are stored on your hard drive and in your browser.
+
+| Location | What it is | Survives shutdown? |
+|----------|------------|-------------------|
+| `self-hosted/data/projects.json` | Main save file on your computer | Yes |
+| Browser storage (`localStorage`) | Extra copy in Chrome/Safari/etc. | Yes, in that same browser |
+
+The server file is updated whenever you change something **and** `npm run dev` is running (you must see both **api** and **web** in the terminal).
+
+---
+
+## Backing up (local file or Google Drive)
+
+There is **no built-in Google Drive button** today. You have two simple options:
+
+### Option 1: Download a backup (easiest)
+
+1. Click **AGENT API** → **⬇ EXPORT JSON**.
+2. Save `projects.json` anywhere — Documents, a USB drive, or upload it to [Google Drive](https://drive.google.com) in your browser.
+3. To restore later: **AGENT API** → **⬆ IMPORT JSON** and choose that file.
+
+Do this before reinstalling the app or switching computers.
+
+### Option 2: Auto-sync with Google Drive Desktop (advanced)
+
+If you use [Google Drive for Desktop](https://www.google.com/drive/download/), you can tell the app to save directly into a synced folder:
+
+1. Create a folder in Google Drive, e.g. `AI Project Tracker`.
+2. Add this line to `self-hosted/.env` (use your real path):
+
+```plaintext
+DATA_DIR=/Users/yourname/Library/CloudStorage/Google Drive/My Drive/AI Project Tracker
+```
+
+3. Restart `npm run dev`.
+
+The app will write `projects.json` into that folder. Google Drive syncs it to the cloud automatically.
+
+---
+
 ## Good to know
 
-- **Your data is saved** in `self-hosted/data/projects.json` while the app runs. You can also export a backup from **AGENT API** → **⬇ EXPORT JSON**.
 - **Keep `npm run dev` running** while you use the app.
 - **AI features need your API key** in `.env`. If you change `.env`, restart the app.
 - **Outside agents** need the same key as `VITE_AGENT_KEY` in `.env` (default: `dev-agent-key`).

@@ -1445,7 +1445,7 @@ if (project.status === "Blocked") {
               <div style={S.card}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: "#C4B5FD", marginBottom: 10, letterSpacing: "0.1em" }}>EXPORT / IMPORT PROJECTS</div>
                 <div style={{ fontSize: 11, color: "#94A3B8", marginBottom: 12 }}>
-                  Projects persist on the server (<code style={{ color: "#E2E8F0" }}>data/projects.json</code>) and in this browser. Export/import for backup or migration.
+                  Saved on disk at <code style={{ color: "#E2E8F0" }}>data/projects.json</code> (survives shutdown). Export a copy to back up locally or upload to Google Drive, iCloud, etc.
                 </div>
                 <button style={S.btn()} onClick={() => {
                   const blob = new Blob([JSON.stringify(projects, null, 2)], { type: "application/json" });

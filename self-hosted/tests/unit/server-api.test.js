@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import request from "supertest";
-import { createApp, getAgentKey } from "../../server/index.js";
+import { createApp, getAgentKey, startServer } from "../../server/index.js";
 
 describe("server API", () => {
   let tempDir;
@@ -97,5 +97,21 @@ describe("server API", () => {
 
     const get = await request(app).get("/api/projects");
     expect(get.body).toEqual(payload);
+  });
+
+  it("startServer boots the API without throwing", async () => {
+    const prevEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+
+    const server = await startServer();
+    try {
+      const address = server.address();
+      expect(address).toBeTruthy();
+      expect(typeof address === "object" ? address.port : address).toBeTruthy();
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+      if (prevEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = prevEnv;
+    }
   });
 });

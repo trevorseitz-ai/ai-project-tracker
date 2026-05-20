@@ -11,7 +11,7 @@ Fix common problems with setup and using the app at [http://localhost:3000](http
 | `git` not found | Install Git from [git-scm.com](https://git-scm.com/) |
 | `npm` not found | Install Node.js 18+ from [nodejs.org](https://nodejs.org/) |
 | `npm install` fails | Run `npm cache clean --force`, then try again |
-| Page won't load | Run `npm run dev` from the `self-hosted` folder and leave that window open |
+| Page won't load | Run `npm run dev` from the `self-hosted` folder and leave that window open. You should see both **api** and **web** start |
 | Port already in use | Close other apps using port 3000, or restart your computer |
 | AI buttons don't work | Add `VITE_ANTHROPIC_API_KEY` to `self-hosted/.env`, save, stop the app (Ctrl+C), run `npm run dev` again |
 
@@ -33,7 +33,7 @@ Fix common problems with setup and using the app at [http://localhost:3000](http
 | Problem | What to try |
 |---------|-------------|
 | Prep button grayed out | Enter a project name; check API key in `.env` |
-| Push button grayed out | Fill in project name and description |
+| Push button grayed out | Fill in **Project Name** and **What it does** |
 | Script has wrong web address | Set `VITE_TRACKER_URL=http://localhost:3000/api/project-update` in `.env`, restart the app, run Prep again |
 | Pull script finds nothing | Add a README and dependency files (like `requirements.txt`) to your outside project |
 
@@ -45,6 +45,8 @@ Fix common problems with setup and using the app at [http://localhost:3000](http
 |---------|-------------|
 | Export is empty | Add at least one project on the board first |
 | Import fails | File must be JSON — an array of projects or `{ "projects": [...] }` |
+| Lost data after reinstall | Use **⬇ EXPORT JSON** before uninstalling; restore with **⬆ IMPORT JSON** |
+| Want Google Drive backup | Export JSON and upload to Drive, or set `DATA_DIR` in `.env` to a Google Drive sync folder (see [Your First Project](./FIRST_PROJECT.md#backing-up-local-file-or-google-drive)) |
 
 ---
 

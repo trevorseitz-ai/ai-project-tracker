@@ -97,7 +97,7 @@ Save files in your outside project folder
 | Problem | What to try |
 |---------|-------------|
 | Prep button grayed out | Enter a project name; check API key in `.env` |
-| Push button grayed out | Fill in project name and description |
+| Push button grayed out | Fill in **Project Name** and **What it does** |
 | Script missing web address | Check `VITE_TRACKER_URL` in `.env` and run Prep again |
 | Interview stops | Give longer answers; check API key and credits |
 
