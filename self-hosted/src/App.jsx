@@ -10,11 +10,80 @@ import {
 } from "./storage.js";
 import { fetchProjectsFromServer, saveProjectsToServer } from "./api.js";
 import { commitUpdateToProjects } from "../shared/projectLogic.js";
+import { requestAnthropic, parseJsonFromModel, copyTextToClipboard } from "./anthropic.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const TS = () => new Date().toISOString();
 const uid = () => Math.random().toString(36).slice(2, 9);
+
+function buildFallbackPrepResult(prepForm, errorMessage) {
+  return normalizePrepResult(
+    {
+      audit: { overall_score: 0, categories: [] },
+      prep_summary: "Generated from your form because the full AI audit could not be completed.",
+      human_actions_required: errorMessage ? [errorMessage] : [],
+      compliance_update: {
+        type: "progress",
+        project: prepForm.projectName,
+        summary: `Prep config created for ${prepForm.projectName}`,
+        detail: errorMessage
+          ? `Full audit unavailable: ${errorMessage}. Copy .tracker-config.json below — it was built from your form.`
+          : "Copy .tracker-config.json below into your outside project folder.",
+        status: prepForm.status,
+        blockers: prepForm.blockers ? [prepForm.blockers] : [],
+        next_steps: ["Deploy reporter agent", "Run Prep again for a full audit"],
+        confidence: 0.5,
+        missing_fields: [],
+      },
+    },
+    prepForm
+  );
+}
+
+function ensureComplianceUpdate(parsed, prepForm) {
+  if (parsed.compliance_update) return parsed;
+  return {
+    ...parsed,
+    compliance_update: {
+      type: "progress",
+      project: prepForm.projectName,
+      summary: `Prep completed for ${prepForm.projectName}`,
+      detail: parsed.prep_summary || "Compliance update logged.",
+      status: prepForm.status,
+      blockers: [],
+      next_steps: ["Deploy reporter agent"],
+      confidence: 0.8,
+      missing_fields: [],
+    },
+  };
+}
+function normalizePrepResult(parsed, prepForm) {
+  const handshake = applyHandshakeConfig(
+    parsed.handshake_file || {
+      project_name: prepForm.projectName,
+      description: prepForm.description || "",
+      model_used: prepForm.model || "",
+      stack: prepForm.stack ? prepForm.stack.split(",").map(s => s.trim()).filter(Boolean) : [],
+      status: prepForm.status,
+      blockers: prepForm.blockers ? [prepForm.blockers] : [],
+      next_steps: ["Deploy reporter agent"],
+    }
+  );
+
+  const audit = parsed.audit && Array.isArray(parsed.audit.categories)
+    ? parsed.audit
+    : { overall_score: 0, categories: [] };
+
+  return {
+    audit,
+    handshake_file: handshake,
+    prep_script: typeof parsed.prep_script === "string" ? injectTrackerIntoScript(parsed.prep_script) : "",
+    prep_summary: parsed.prep_summary || "Prep audit completed.",
+    human_actions_required: Array.isArray(parsed.human_actions_required) ? parsed.human_actions_required : [],
+    compliance_update: parsed.compliance_update,
+  };
+}
 
 const UPDATE_TYPES = {
   feature: { label: "Feature Idea", color: "#6EE7B7", icon: "✦" },
@@ -283,6 +352,7 @@ function ConfidenceMeter({ value }) {
 
 export default function App() {
   const importInputRef = useRef(null);
+  const prepResultsRef = useRef(null);
   const [tab, setTab] = useState("board");
   const [projects, setProjects] = useState(() => loadProjects());
   const [rawInput, setRawInput] = useState("");
@@ -317,6 +387,8 @@ export default function App() {
   const [prepForm, setPrepForm] = useState({ projectName: "", description: "", stack: "", model: "", status: "Active", blockers: "", knownIssues: "", agentMode: "autonomous" });
   const [prepping, setPrepping] = useState(false);
   const [prepResult, setPrepResult] = useState(null);
+  const [prepError, setPrepError] = useState(null);
+  const [prepWarning, setPrepWarning] = useState(null);
   const [prepScriptCopied, setPrepScriptCopied] = useState(false);
   const [handshakeCopied, setHandshakeCopied] = useState(false);
 
@@ -348,6 +420,12 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (prepResult && prepResultsRef.current) {
+      prepResultsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [prepResult]);
+
   function showToast(msg, ok = true) {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 2800);
@@ -359,25 +437,12 @@ export default function App() {
     setParsedUpdate(null);
     setParseIssues([]);
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-        "Content-Type": "application/json",
-        "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: REPORTER_PROMPT,
-          messages: [{ role: "user", content: rawInput }],
-        }),
+      const { text: raw } = await requestAnthropic({
+        max_tokens: 1000,
+        system: REPORTER_PROMPT,
+        messages: [{ role: "user", content: rawInput }],
       });
-      const data = await res.json();
-      const raw = data.content?.map(b => b.text || "").join("") || "{}";
-      const clean = raw.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(clean);
+      const parsed = parseJsonFromModel(raw);
       parsed.id = uid();
       parsed.timestamp = TS();
       const issues = detectMissing(parsed);
@@ -385,25 +450,14 @@ export default function App() {
       setParseIssues(issues);
       setEditFields({ ...parsed });
     } catch (e) {
-      showToast("Parse failed — check input or API", false);
+      showToast(e.message || "Parse failed — check input or API", false);
     }
     setParsing(false);
   }
 
   function commitUpdate() {
     const update = { ...editFields, id: parsedUpdate.id, timestamp: parsedUpdate.timestamp };
-    const projName = update.project;
-    setProjects(prev => {
-      let found = prev.find(p => p.name.toLowerCase() === projName?.toLowerCase());
-      if (!found) {
-        found = { id: uid(), name: projName || "Unknown", status: update.status || "Active", model: update.model_used || "Unknown", updates: [] };
-        return [...prev.map(p => ({ ...p })), { ...found, updates: [update], status: update.status || "Active" }];
-      }
-      return prev.map(p => p.name.toLowerCase() === projName?.toLowerCase()
-        ? { ...p, status: update.status || p.status, model: update.model_used || p.model, updates: [update, ...p.updates] }
-        : p
-      );
-    });
+    setProjects(prev => commitUpdateToProjects(prev, update, update.model_used));
     setParsedUpdate(null);
     setRawInput("");
     setParseIssues([]);
@@ -466,24 +520,18 @@ TRACKER_URL: ${trackerUrl}
 AGENT_KEY: ${agentKey}
 Generate the push reporter now.`;
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST", headers: {
-        "Content-Type": "application/json",
-        "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-        body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4000, system: PUSH_AGENT_SYSTEM, messages: [{ role: "user", content: userMsg }] }),
+      const { text: raw } = await requestAnthropic({
+        max_tokens: 4000,
+        system: PUSH_AGENT_SYSTEM,
+        messages: [{ role: "user", content: userMsg }],
       });
-      const data = await res.json();
-      const raw = data.content?.map(b => b.text || "").join("") || "{}";
       const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
       if (parsed.agent_script) parsed.agent_script = injectTrackerIntoScript(parsed.agent_script);
       parsed.first_update.id = uid(); parsed.first_update.timestamp = TS();
       setPushResult(parsed);
       commitToBoard(parsed.first_update, pushForm.model);
       showToast("Push reporter ready + first update logged ✓");
-    } catch (e) { showToast("Generation failed", false); }
+    } catch (e) { showToast(e.message || "Generation failed", false); }
     setPushing(false);
   }
 
@@ -491,25 +539,18 @@ Generate the push reporter now.`;
   async function runPullAutonomous() {
     setPulling(true); setPullResult(null);
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST", headers: {
-        "Content-Type": "application/json",
-        "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-        body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4000, system: PULL_AGENT_SYSTEM,
-          messages: [{ role: "user", content: `Generate the autonomous pull reporter. TRACKER_URL=${trackerUrl} AGENT_KEY=${agentKey}` }] }),
+      const { text: raw } = await requestAnthropic({
+        max_tokens: 4000,
+        system: PULL_AGENT_SYSTEM,
+        messages: [{ role: "user", content: `Generate the autonomous pull reporter. TRACKER_URL=${trackerUrl} AGENT_KEY=${agentKey}` }],
       });
-      const data = await res.json();
-      const raw = data.content?.map(b => b.text || "").join("") || "{}";
       const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
       if (parsed.agent_script) parsed.agent_script = injectTrackerIntoScript(parsed.agent_script);
       parsed.first_update.id = uid(); parsed.first_update.timestamp = TS();
       setPullResult(parsed);
       commitToBoard(parsed.first_update, null);
       showToast("Pull reporter generated ✓");
-    } catch (e) { showToast("Generation failed", false); }
+    } catch (e) { showToast(e.message || "Generation failed", false); }
     setPulling(false);
   }
 
@@ -518,20 +559,16 @@ Generate the push reporter now.`;
     setInterviewMessages([]);
     setInterviewDone(false);
     setInterviewing(true);
-    // Send first message from interviewer
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST", headers: {
-        "Content-Type": "application/json",
-        "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 300, system: PULL_INTERVIEW_SYSTEM,
-        messages: [{ role: "user", content: "Start the interview." }] }),
-    });
-    const data = await res.json();
-    const q = data.content?.map(b => b.text || "").join("") || "";
-    setInterviewMessages([{ role: "assistant", content: q }]);
+    try {
+      const { text: q } = await requestAnthropic({
+        max_tokens: 300,
+        system: PULL_INTERVIEW_SYSTEM,
+        messages: [{ role: "user", content: "Start the interview." }],
+      });
+      setInterviewMessages([{ role: "assistant", content: q }]);
+    } catch (e) {
+      showToast(e.message || "Interview failed to start", false);
+    }
     setInterviewing(false);
   }
 
@@ -542,28 +579,25 @@ Generate the push reporter now.`;
     const updated = [...interviewMessages, { role: "user", content: userMsg }];
     setInterviewMessages(updated);
     setInterviewing(true);
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST", headers: {
-        "Content-Type": "application/json",
-        "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 500, system: PULL_INTERVIEW_SYSTEM,
-        messages: updated }),
-    });
-    const data = await res.json();
-    const reply = data.content?.map(b => b.text || "").join("") || "";
-    if (reply.startsWith("READY:")) {
-      try {
-        const parsed = JSON.parse(reply.slice(6).trim());
-        parsed.id = uid(); parsed.timestamp = TS();
-        commitToBoard(parsed, parsed.model_used);
-        setInterviewMessages([...updated, { role: "assistant", content: "✓ All set — I have enough context. First update has been logged to the board.", done: true }]);
-        setInterviewDone(true);
-      } catch { setInterviewMessages([...updated, { role: "assistant", content: reply }]); }
-    } else {
-      setInterviewMessages([...updated, { role: "assistant", content: reply }]);
+    try {
+      const { text: reply } = await requestAnthropic({
+        max_tokens: 500,
+        system: PULL_INTERVIEW_SYSTEM,
+        messages: updated,
+      });
+      if (reply.startsWith("READY:")) {
+        try {
+          const parsed = JSON.parse(reply.slice(6).trim());
+          parsed.id = uid(); parsed.timestamp = TS();
+          commitToBoard(parsed, parsed.model_used);
+          setInterviewMessages([...updated, { role: "assistant", content: "✓ All set — I have enough context. First update has been logged to the board.", done: true }]);
+          setInterviewDone(true);
+        } catch { setInterviewMessages([...updated, { role: "assistant", content: reply }]); }
+      } else {
+        setInterviewMessages([...updated, { role: "assistant", content: reply }]);
+      }
+    } catch (e) {
+      showToast(e.message || "Interview message failed", false);
     }
     setInterviewing(false);
   }
@@ -574,10 +608,22 @@ Generate the push reporter now.`;
 
 
 
+  function applyPrepResult(parsed, { errorMessage = null, warning = null } = {}) {
+    const withUpdate = ensureComplianceUpdate(parsed, prepForm);
+    withUpdate.compliance_update.id = uid();
+    withUpdate.compliance_update.timestamp = TS();
+    setPrepResult(withUpdate);
+    setPrepError(errorMessage);
+    setPrepWarning(warning);
+    commitToBoard(withUpdate.compliance_update, prepForm.model);
+  }
+
   // ── PREP: audit project, generate handshake, remediation script, compliance update
   async function runPrep() {
     if (!prepForm.projectName.trim()) return;
-    setPrepping(true); setPrepResult(null);
+    setPrepping(true);
+    setPrepError(null);
+    setPrepWarning(null);
     const userMsg = `Project name: ${prepForm.projectName}
 Description: ${prepForm.description || "not provided"}
 Stack / tools: ${prepForm.stack || "not specified"}
@@ -592,26 +638,23 @@ Timestamp: ${TS()}
 
 Run the full compliance audit and generate the prep agent now.`;
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST", headers: {
-        "Content-Type": "application/json",
-        "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-        body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 5000, system: PREP_AGENT_SYSTEM, messages: [{ role: "user", content: userMsg }] }),
+      const { text: raw, stopReason } = await requestAnthropic({
+        max_tokens: 8192,
+        system: PREP_AGENT_SYSTEM,
+        messages: [{ role: "user", content: userMsg }],
       });
-      const data = await res.json();
-      const raw = data.content?.map(b => b.text || "").join("") || "{}";
-      const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-      if (parsed.handshake_file) parsed.handshake_file = applyHandshakeConfig(parsed.handshake_file);
-      if (parsed.prep_script) parsed.prep_script = injectTrackerIntoScript(parsed.prep_script);
-      parsed.compliance_update.id = uid();
-      parsed.compliance_update.timestamp = TS();
-      setPrepResult(parsed);
-      commitToBoard(parsed.compliance_update, prepForm.model);
-      showToast("Prep complete — compliance update logged ✓");
-    } catch (e) { showToast("Prep agent generation failed", false); }
+      const parsed = normalizePrepResult(parseJsonFromModel(raw), prepForm);
+      const warning =
+        stopReason === "max_tokens"
+          ? "The AI response was cut off. Copy the config below, then run Prep again if anything looks incomplete."
+          : null;
+      applyPrepResult(parsed, { warning });
+      showToast(warning ? "Prep finished — review warnings below" : "Prep complete — copy your files below");
+    } catch (e) {
+      const message = e.message || "Prep agent generation failed";
+      applyPrepResult(buildFallbackPrepResult(prepForm, message), { errorMessage: message });
+      showToast("Prep had an issue — basic config is ready to copy below", false);
+    }
     setPrepping(false);
   }
 
@@ -1157,8 +1200,8 @@ Run the full compliance audit and generate the prep agent now.`;
 
         {/* ── PREP AGENT TAB ── */}
         {tab === "prep" && (
-          <div>
-            <div style={{ display: "grid", gridTemplateColumns: prepResult ? "380px 1fr" : "1fr 1fr", gap: 20 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: prepResult ? "1fr" : "1fr 1fr", gap: 20 }}>
 
               {/* ── Input form ── */}
               <div style={S.card}>
@@ -1207,6 +1250,11 @@ Run the full compliance audit and generate the prep agent now.`;
                   onClick={runPrep} disabled={prepping || !prepForm.projectName}>
                   {prepping ? "⟳ RUNNING PREP AUDIT…" : "◈ RUN PREP AGENT"}
                 </button>
+                {prepping && (
+                  <div style={{ marginTop: 12, fontSize: 11, color: "#FDE68A", lineHeight: 1.6 }}>
+                    Running audit — this can take 30–60 seconds. Please wait…
+                  </div>
+                )}
               </div>
 
               {/* ── Results ── */}
@@ -1241,21 +1289,77 @@ Run the full compliance audit and generate the prep agent now.`;
                   </div>
                 </div>
               )}
+            </div>
 
               {prepResult && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div ref={prepResultsRef} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+                  {(prepError || prepWarning) && (
+                    <div style={{
+                      ...S.card,
+                      border: `1px solid ${prepError ? "#FCA5A566" : "#FDE68A66"}`,
+                      background: prepError ? "#FCA5A50A" : "#FDE68A0A",
+                    }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: prepError ? "#FCA5A5" : "#FDE68A", marginBottom: 6 }}>
+                        {prepError ? "PREP ISSUE" : "PREP WARNING"}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#94A3B8", lineHeight: 1.6 }}>
+                        {prepError || prepWarning}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Copy actions — shown first so they are easy to find */}
+                  <div style={{ ...S.card, border: "1px solid #6EE7B744", background: "#0D1017" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#6EE7B7", letterSpacing: "0.12em", marginBottom: 10 }}>
+                      PREP COMPLETE — COPY YOUR FILES
+                    </div>
+                    <div style={{ fontSize: 11, color: "#94A3B8", marginBottom: 14, lineHeight: 1.6 }}>
+                      Save in your <strong style={{ color: "#E2E8F0" }}>outside project&apos;s top folder</strong> (not in ai-project-tracker).
+                      Name the file exactly <strong style={{ color: "#93C5FD" }}>.tracker-config.json</strong> — same level as README or package.json.
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <button
+                        style={{ ...S.btn(), padding: "10px 16px", fontSize: 12 }}
+                        onClick={async () => {
+                          await copyTextToClipboard(JSON.stringify(prepResult.handshake_file, null, 2));
+                          setHandshakeCopied(true);
+                          setTimeout(() => setHandshakeCopied(false), 2000);
+                          showToast("Copied .tracker-config.json ✓");
+                        }}
+                      >
+                        {handshakeCopied ? "✓ COPIED" : "⎘ COPY .tracker-config.json"}
+                      </button>
+                      {prepResult.prep_script ? (
+                        <button
+                          style={{ ...S.btn("ghost"), padding: "10px 16px", fontSize: 12 }}
+                          onClick={async () => {
+                            await copyTextToClipboard(prepResult.prep_script);
+                            setPrepScriptCopied(true);
+                            setTimeout(() => setPrepScriptCopied(false), 2000);
+                            showToast("Copied prep script ✓");
+                          }}
+                        >
+                          {prepScriptCopied ? "✓ COPIED" : "⎘ COPY PREP SCRIPT"}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
 
                   {/* Audit scorecard */}
                   <div style={S.card}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: "#FDE68A", letterSpacing: "0.1em" }}>COMPLIANCE AUDIT</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div style={{ fontSize: 24, fontWeight: 700, color: prepResult.audit.overall_score >= 80 ? "#6EE7B7" : prepResult.audit.overall_score >= 50 ? "#FDE68A" : "#FCA5A5" }}>
-                          {prepResult.audit.overall_score}
+                        <div style={{ fontSize: 24, fontWeight: 700, color: (prepResult.audit?.overall_score ?? 0) >= 80 ? "#6EE7B7" : (prepResult.audit?.overall_score ?? 0) >= 50 ? "#FDE68A" : "#FCA5A5" }}>
+                          {prepResult.audit?.overall_score ?? "—"}
                         </div>
                         <div style={{ fontSize: 10, color: "#475569" }}>/100</div>
                       </div>
                     </div>
+                    {(prepResult.audit?.categories?.length ?? 0) === 0 ? (
+                      <div style={{ fontSize: 11, color: "#475569" }}>Audit details were not returned — you can still copy the config file above.</div>
+                    ) : (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
                       {prepResult.audit.categories.map(cat => {
                         const statusColor = cat.status === "pass" ? "#6EE7B7" : cat.status === "warn" ? "#FDE68A" : "#FCA5A5";
@@ -1280,9 +1384,11 @@ Run the full compliance audit and generate the prep agent now.`;
                         );
                       })}
                     </div>
+                    )}
                   </div>
 
                   {/* Fixes + manual actions */}
+                  {(prepResult.audit?.categories?.length ?? 0) > 0 && (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                     <div style={S.card}>
                       <div style={{ fontSize: 10, fontWeight: 700, color: "#6EE7B7", letterSpacing: "0.1em", marginBottom: 10 }}>AUTOMATED FIXES (SCRIPT WILL APPLY)</div>
@@ -1306,33 +1412,38 @@ Run the full compliance audit and generate the prep agent now.`;
                         ))}
                     </div>
                   </div>
+                  )}
 
-                  {/* Handshake file + script */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                  {/* Handshake file + script previews */}
+                  <div style={{ display: "grid", gridTemplateColumns: prepResult.prep_script ? "1fr 1fr" : "1fr", gap: 14 }}>
                     <div style={S.card}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                         <div style={{ fontSize: 10, fontWeight: 700, color: "#93C5FD", letterSpacing: "0.1em" }}>.tracker-config.json</div>
-                        <button style={{ ...S.btn(), fontSize: 10, padding: "4px 10px" }} onClick={() => {
-                          navigator.clipboard.writeText(JSON.stringify(prepResult.handshake_file, null, 2));
+                        <button style={{ ...S.btn(), fontSize: 10, padding: "4px 10px" }} onClick={async () => {
+                          await copyTextToClipboard(JSON.stringify(prepResult.handshake_file, null, 2));
                           setHandshakeCopied(true); setTimeout(() => setHandshakeCopied(false), 2000);
                         }}>{handshakeCopied ? "✓ COPIED" : "⎘ COPY"}</button>
                       </div>
-                      <div style={{ fontSize: 10, color: "#475569", marginBottom: 8 }}>Drop this file into your project root. The reporter reads it on arrival.</div>
+                      <div style={{ fontSize: 10, color: "#475569", marginBottom: 8 }}>
+                        Save as <strong style={{ color: "#93C5FD" }}>.tracker-config.json</strong> in your outside project&apos;s top folder (same level as README).
+                      </div>
                       <div style={{ ...S.promptBox, fontSize: 10, maxHeight: 200, overflowY: "auto" }}>
                         {JSON.stringify(prepResult.handshake_file, null, 2)}
                       </div>
                     </div>
+                    {prepResult.prep_script ? (
                     <div style={S.card}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                         <div style={{ fontSize: 10, fontWeight: 700, color: "#C4B5FD", letterSpacing: "0.1em" }}>PREP SCRIPT</div>
-                        <button style={{ ...S.btn(), fontSize: 10, padding: "4px 10px" }} onClick={() => {
-                          navigator.clipboard.writeText(prepResult.prep_script);
+                        <button style={{ ...S.btn(), fontSize: 10, padding: "4px 10px" }} onClick={async () => {
+                          await copyTextToClipboard(prepResult.prep_script);
                           setPrepScriptCopied(true); setTimeout(() => setPrepScriptCopied(false), 2000);
                         }}>{prepScriptCopied ? "✓ COPIED" : "⎘ COPY"}</button>
                       </div>
                       <div style={{ fontSize: 11, color: "#94A3B8", marginBottom: 8 }}>{prepResult.prep_summary}</div>
                       <div style={{ ...S.promptBox, fontSize: 10, maxHeight: 172, overflowY: "auto" }}>{prepResult.prep_script}</div>
                     </div>
+                    ) : null}
                   </div>
 
                   {/* Compliance update preview */}
@@ -1355,12 +1466,16 @@ Run the full compliance audit and generate the prep agent now.`;
                   </div>
 
                   <button style={{ ...S.btn("ghost"), width: "100%" }}
-                    onClick={() => { setPrepResult(null); setPrepForm({ projectName: "", description: "", stack: "", model: "", status: "Active", blockers: "", knownIssues: "", agentMode: "autonomous" }); }}>
+                    onClick={() => {
+                      setPrepResult(null);
+                      setPrepError(null);
+                      setPrepWarning(null);
+                      setPrepForm({ projectName: "", description: "", stack: "", model: "", status: "Active", blockers: "", knownIssues: "", agentMode: "autonomous" });
+                    }}>
                     + PREP ANOTHER PROJECT
                   </button>
                 </div>
               )}
-            </div>
           </div>
         )}
 

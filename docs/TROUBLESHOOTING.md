@@ -14,6 +14,7 @@ Fix common problems with setup and using the app at [http://localhost:3000](http
 | Page won't load | Run `npm run dev` from the `self-hosted` folder and leave that window open. You should see both **api** and **web** start |
 | Port already in use | Close other apps using port 3000, or restart your computer |
 | AI buttons don't work | Add `VITE_ANTHROPIC_API_KEY` to `self-hosted/.env`, save, stop the app (Ctrl+C), run `npm run dev` again |
+| Prep / Parse fails with API 404 | The model name may be outdated — add `VITE_ANTHROPIC_MODEL=claude-sonnet-4-6` to `.env` and restart |
 
 ---
 

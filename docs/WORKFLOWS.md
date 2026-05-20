@@ -28,7 +28,7 @@ Use this when you want to connect an **outside project folder** and create a con
 2. Fill in the form (**Project Name** is required).
 3. Click **◈ RUN PREP AGENT**.
 4. Review the score and suggestions.
-5. Copy **`.tracker-config.json`** and save it in your outside project's folder.
+5. Click **⎘ COPY .tracker-config.json** and save it as **`.tracker-config.json`** in the **top folder** of your outside project (same level as `README.md` — not inside `ai-project-tracker`). See [Your First Project — Where to save](./FIRST_PROJECT.md#where-to-save-tracker-configjson).
 
 An update is added to **BOARD** automatically.
 

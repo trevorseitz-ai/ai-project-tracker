@@ -5,7 +5,14 @@ export const TS = () => new Date().toISOString();
 export const uid = () => Math.random().toString(36).slice(2, 9);
 
 export function commitUpdateToProjects(projects, update, model) {
-  const name = update.project || "Unknown";
+  const normalized = normalizeStoredUpdate(update, update?.project);
+  const name = normalized.project || "Unknown";
+  const projectStatus = VALID_STATUSES.includes(normalized.status) ? normalized.status : "Active";
+  const projectModel =
+    (typeof model === "string" && model.trim()) ||
+    (typeof normalized.model_used === "string" && normalized.model_used.trim()) ||
+    "Unknown";
+
   const found = projects.find(p => p.name.toLowerCase() === name.toLowerCase());
   if (!found) {
     return [
@@ -13,9 +20,9 @@ export function commitUpdateToProjects(projects, update, model) {
       {
         id: uid(),
         name,
-        status: update.status || "Active",
-        model: model || update.model_used || "Unknown",
-        updates: [update],
+        status: projectStatus,
+        model: projectModel,
+        updates: [normalized],
       },
     ];
   }
@@ -23,12 +30,53 @@ export function commitUpdateToProjects(projects, update, model) {
     p.name.toLowerCase() === name.toLowerCase()
       ? {
           ...p,
-          status: update.status || p.status,
-          model: model || update.model_used || p.model,
-          updates: [update, ...p.updates],
+          status: projectStatus,
+          model: projectModel,
+          updates: [normalized, ...p.updates],
         }
       : p
   );
+}
+
+export function normalizeStoredUpdate(update, projectName = "Unknown") {
+  const name =
+    typeof update?.project === "string" && update.project.trim()
+      ? update.project.trim()
+      : projectName;
+
+  return {
+    id: typeof update?.id === "string" ? update.id : uid(),
+    timestamp: typeof update?.timestamp === "string" ? update.timestamp : TS(),
+    type: typeof update?.type === "string" && update.type.trim() ? update.type : "daily",
+    project: name,
+    summary:
+      typeof update?.summary === "string" && update.summary.trim()
+        ? update.summary.trim()
+        : "Update",
+    detail: typeof update?.detail === "string" ? update.detail : "",
+    model_used: update?.model_used ?? null,
+    status: VALID_STATUSES.includes(update?.status) ? update.status : "Active",
+    blockers: Array.isArray(update?.blockers) ? update.blockers : [],
+    next_steps: Array.isArray(update?.next_steps) ? update.next_steps : [],
+    confidence: typeof update?.confidence === "number" ? update.confidence : 0.8,
+    missing_fields: Array.isArray(update?.missing_fields) ? update.missing_fields : [],
+  };
+}
+
+export function sanitizeProjectsForServer(projects) {
+  if (!Array.isArray(projects)) return [];
+
+  return projects
+    .filter(p => p && typeof p.name === "string" && p.name.trim())
+    .map(p => ({
+      id: typeof p.id === "string" ? p.id : uid(),
+      name: p.name.trim(),
+      status: VALID_STATUSES.includes(p.status) ? p.status : "Active",
+      model: typeof p.model === "string" && p.model.trim() ? p.model : "Unknown",
+      updates: Array.isArray(p.updates)
+        ? p.updates.map(u => normalizeStoredUpdate(u, p.name))
+        : [],
+    }));
 }
 
 export function validateAgentUpdatePayload(body) {

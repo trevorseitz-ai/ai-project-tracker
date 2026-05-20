@@ -1,3 +1,5 @@
+import { sanitizeProjectsForServer } from "../shared/projectLogic.js";
+
 export async function fetchProjectsFromServer() {
   try {
     const res = await fetch("/api/projects");
@@ -10,10 +12,11 @@ export async function fetchProjectsFromServer() {
 
 export async function saveProjectsToServer(projects) {
   try {
+    const payload = sanitizeProjectsForServer(projects);
     await fetch("/api/projects", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(projects),
+      body: JSON.stringify(payload),
     });
   } catch {
     // API unavailable — localStorage remains the fallback cache

@@ -101,7 +101,9 @@ describe("server API", () => {
 
   it("startServer boots the API without throwing", async () => {
     const prevEnv = process.env.NODE_ENV;
+    const prevPort = process.env.PORT;
     process.env.NODE_ENV = "development";
+    process.env.PORT = "0";
 
     const server = await startServer();
     try {
@@ -112,6 +114,8 @@ describe("server API", () => {
       await new Promise(resolve => server.close(resolve));
       if (prevEnv === undefined) delete process.env.NODE_ENV;
       else process.env.NODE_ENV = prevEnv;
+      if (prevPort === undefined) delete process.env.PORT;
+      else process.env.PORT = prevPort;
     }
   });
 });

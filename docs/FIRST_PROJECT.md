@@ -81,10 +81,35 @@ Do this when you have a real code folder and want the tracker to help it send up
 1. Click **PREP AGENT**.
 2. Fill in the form (at minimum **Project Name**).
 3. Click **◈ RUN PREP AGENT**.
-4. Click **⎘ COPY** next to **`.tracker-config.json`**.
-5. Save that file in your outside project's main folder.
+4. When Prep finishes, click **⎘ COPY .tracker-config.json** at the top of the results (scroll down if needed).
+5. Save the file in your **outside project** — see [Where to save `.tracker-config.json`](#where-to-save-tracker-configjson) below.
 
 Prep also adds an update to your **BOARD**.
+
+### Where to save `.tracker-config.json`
+
+This file goes in the **project you are tracking** (your homework app, Python repo, etc.) — **not** inside the `ai-project-tracker` folder.
+
+| What | Details |
+|------|---------|
+| **Exact file name** | `.tracker-config.json` — including the dot at the start |
+| **Where** | The **top folder** of that project (the same folder that has `README.md`, `package.json`, or `requirements.txt`) |
+| **Not here** | Do not put it in subfolders like `src/` unless your whole project lives there |
+
+**Example:** If your project is at `/Users/you/Projects/ReelDive/`, save:
+
+```
+/Users/you/Projects/ReelDive/.tracker-config.json
+```
+
+**How to create the file:**
+
+1. Open a text editor (VS Code, Notepad, TextEdit).
+2. Paste what you copied from the tracker.
+3. Save As → name the file exactly **`.tracker-config.json`**.
+4. On Mac, if the editor adds `.txt`, rename the file in Finder so it ends with `.json` only.
+
+On Mac/Linux the leading dot makes it a “hidden” file — that is normal. In VS Code you will still see it in the file list.
 
 ### Step 2: Create a reporter script
 

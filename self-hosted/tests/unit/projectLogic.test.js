@@ -3,9 +3,12 @@ import {
   commitUpdateToProjects,
   validateAgentUpdatePayload,
   normalizeAgentUpdate,
+  normalizeStoredUpdate,
+  sanitizeProjectsForServer,
   getProjectStatus,
   uid,
 } from "../../shared/projectLogic.js";
+import { isValidProject } from "../../shared/projectsSchema.js";
 
 describe("projectLogic", () => {
   it("commitUpdateToProjects creates a project when missing", () => {
@@ -82,5 +85,27 @@ describe("projectLogic", () => {
     expect(projects[0].updates[1].summary).toBe("First update logged");
     expect(projects[0].updates[0].id).not.toBe(projects[0].updates[1].id);
     expect(uid()).toMatch(/^[a-z0-9]+$/);
+  });
+
+  it("normalizeStoredUpdate fills missing update fields", () => {
+    const update = normalizeStoredUpdate({ project: "ReelDive", summary: "first try" }, "ReelDive");
+    expect(update.type).toBe("daily");
+    expect(update.id).toBeTruthy();
+    expect(update.timestamp).toBeTruthy();
+    expect(update.summary).toBe("first try");
+  });
+
+  it("sanitizeProjectsForServer produces valid projects", () => {
+    const sanitized = sanitizeProjectsForServer([
+      {
+        id: "x",
+        name: "ReelDive",
+        status: "Active",
+        model: "Claude",
+        updates: [{ project: "ReelDive", summary: "partial update" }],
+      },
+    ]);
+    expect(sanitized).toHaveLength(1);
+    expect(isValidProject(sanitized[0])).toBe(true);
   });
 });

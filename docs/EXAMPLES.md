@@ -11,7 +11,7 @@ Sample ways to use the tracker at [http://localhost:3000](http://localhost:3000)
 **Steps (in order):**
 
 1. **PREP AGENT** — enter project name `Python NLP Project`, stack `Python, LangChain`, model `GPT-4`. Click **◈ RUN PREP AGENT**.
-2. Copy `.tracker-config.json` into your Python project's folder.
+2. Copy `.tracker-config.json` and save it as **`.tracker-config.json`** in the **top folder** of your Python project (same folder as `requirements.txt`).
 3. **REPORTER → ▲ PUSH MODE** — enter the same details. Click generate. Copy the script as `reporter.py` in that folder.
 4. **BOARD** — confirm the project card shows an update.
 
