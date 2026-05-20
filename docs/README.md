@@ -1,67 +1,56 @@
 # Documentation
 
-Guides for the AI Project Tracker, in the order most people should read them.
+Read these guides **in order** the first time you use the app.
 
 ---
 
-## Start here
+## Start here (read in this order)
 
-| # | Guide | What you'll learn |
-|---|-------|-------------------|
-| 1 | [Getting Started](./GETTING_STARTED.md) | Clone the repo, install dependencies, configure `.env`, and run the app |
-| 2 | [Installation](./INSTALLATION.md) | Claude Artifact vs self-hosted setup, prerequisites, and deployment basics |
-| 3 | [Your First Project](./FIRST_PROJECT.md) | Add a project on the Board, log updates, and connect an external repo |
-| 4 | [Workflows](./WORKFLOWS.md) | Prep Agent, Push Reporter, and Pull Reporter — the core day-to-day usage |
-| 5 | [Examples](./EXAMPLES.md) | Real-world scenarios for software projects, data pipelines, and multi-model setups |
+| Step | Guide | What you will do |
+|------|-------|------------------|
+| 1 | [Getting Started](./GETTING_STARTED.md) | Install the app and open it in your browser |
+| 2 | [Your First Project](./FIRST_PROJECT.md) | Add a project and log your first update |
+| 3 | [Workflows](./WORKFLOWS.md) | Use Prep, Push, and Pull tools (optional, for automation) |
+| 4 | [Examples](./EXAMPLES.md) | See sample setups (optional) |
 
----
-
-## Understand the system
-
-| # | Guide | What you'll learn |
-|---|-------|-------------------|
-| 6 | [Architecture](./ARCHITECTURE.md) | Folder structure, key components, and how the agents interact |
-| 7 | [API Reference](./API_REFERENCE.md) | Update schema, endpoints, and integration contracts for autonomous agents |
+**Stuck?** → [Troubleshooting](./TROUBLESHOOTING.md)
 
 ---
 
-## Test and debug
+## Other setup options
 
-| # | Guide | What you'll learn |
-|---|-------|-------------------|
-| 8 | [Testing](./TESTING.md) | Unit, security, and AI prompt tests — what to run and when |
-| 9 | [Troubleshooting](./TROUBLESHOOTING.md) | Common setup and runtime issues with fixes |
+| Guide | When to use it |
+|-------|----------------|
+| [Installation](./INSTALLATION.md) | Run inside Claude.ai with no install, or deploy for production |
 
----
-
-## Go further
-
-| # | Guide | What you'll learn |
-|---|-------|-------------------|
-| 10 | [Roadmap](./ROADMAP.md) | What's implemented vs planned (Slack, i18n, multi-user, etc.) |
-
-Legacy guides (aspirational — see Roadmap before using):
-
-- [Advanced Guides](./ADVANCED_GUIDES.md)
-- [Advanced Integrations](./ADVANCED_INTEGRATIONS.md)
-- [Localization](./LOCALIZATION.md)
+You do **not** need Installation if you already finished Getting Started.
 
 ---
 
-## Quick paths
+## Learn more (read later)
 
-**First time running the app?**  
-[Getting Started](./GETTING_STARTED.md) → [Your First Project](./FIRST_PROJECT.md) → [Workflows](./WORKFLOWS.md)
+| Guide | What it covers |
+|-------|----------------|
+| [Architecture](./ARCHITECTURE.md) | How the code is organized |
+| [API Reference](./API_REFERENCE.md) | How other programs send updates to the tracker |
+| [Testing](./TESTING.md) | How to run automated tests |
+| [Roadmap](./ROADMAP.md) | Features planned for the future |
 
-**Integrating an autonomous agent?**  
-[API Reference](./API_REFERENCE.md) → [Examples](./EXAMPLES.md)
+---
+
+## Quick links
+
+**First time?**  
+[Getting Started](./GETTING_STARTED.md) → [Your First Project](./FIRST_PROJECT.md)
+
+**Hooking up an AI agent?**  
+[API Reference](./API_REFERENCE.md)
 
 **Something broke?**  
 [Troubleshooting](./TROUBLESHOOTING.md)
 
-**Deploying to production?**  
-[Installation](./INSTALLATION.md) (production section) → [Architecture](./ARCHITECTURE.md) → [Roadmap](./ROADMAP.md)
-
 ---
 
-See also the project [README](../README.md) for a high-level overview and the [CHANGELOG](../CHANGELOG.md) for release history.
+Older guides marked “not current” on the [Roadmap](./ROADMAP.md): Advanced Guides, Advanced Integrations, Localization.
+
+See also the project [README](../README.md) and [CHANGELOG](../CHANGELOG.md).

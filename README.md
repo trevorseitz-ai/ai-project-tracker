@@ -67,16 +67,16 @@ The tracker spawns a reporter that goes **out** to a project it knows nothing ab
 cd self-hosted
 npm install
 cp .env.example .env
-# Add your Anthropic API key to .env
+# Edit .env — add VITE_ANTHROPIC_API_KEY (see .env.example)
 npm run dev
-# Opens UI at http://localhost:3000 (API on :3001, proxied in dev)
+# Open http://localhost:3000 in your browser
 ```
 
 **Requirements:**
 - Node.js 18+
 - An [Anthropic API key](https://console.anthropic.com/keys)
 
-**Full documentation:** see [docs/README.md](./docs/README.md) for guides in recommended reading order (start with [Your First Project](./docs/FIRST_PROJECT.md) after install).
+**Full documentation:** [docs/README.md](./docs/README.md) — start with [Getting Started](./docs/GETTING_STARTED.md), then [Your First Project](./docs/FIRST_PROJECT.md).
 
 ---
 

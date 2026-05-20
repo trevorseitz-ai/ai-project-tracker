@@ -1,161 +1,143 @@
 # Your First Project
 
-This guide bridges **installing the tracker** and **connecting agents**. If you've completed [Getting Started](./GETTING_STARTED.md) and have the app running at [http://localhost:3000](http://localhost:3000), you're in the right place.
+The app should already be open at [http://localhost:3000](http://localhost:3000).
+
+This guide shows you how to **use** the tracker — add projects, log updates, and (optionally) connect outside code.
 
 ---
 
-## Two different "projects"
+## Two things called "project"
 
-It's easy to mix these up:
+| | **The tracker** | **A project you track** |
+|---|-----------------|-------------------------|
+| What | This app in your browser | Your own homework app, Python script, etc. |
+| Where | `ai-project-tracker/self-hosted` | A folder on your computer |
 
-| | **Tracker app** | **Tracked project** |
-|---|---|---|
-| **What it is** | The React app you installed (`ai-project-tracker/self-hosted`) | An external repo or agent you want to monitor |
-| **Where it lives** | `self-hosted/` in this repository | Your own codebase (Python agent, web app, etc.) |
-| **What you do here** | View the board, log updates, generate scripts | Drop in `.tracker-config.json` and reporter scripts |
-
-Everything in this guide happens **in the tracker UI** unless noted otherwise.
+Everything below happens **inside the tracker website** unless we say otherwise.
 
 ---
 
-## Know the tabs
+## The five tabs
 
-The header has five tabs:
-
-| Tab | Purpose |
-|---|---|
-| **BOARD** | See all tracked projects, add new ones, view update history |
-| **LOG UPDATE** | Paste a raw update from any AI, parse it into the schema, commit it |
-| **REPORTER** | Generate Push or Pull reporter scripts (or copy the schema prompt) |
-| **PREP AGENT** | Audit a project and generate `.tracker-config.json` |
-| **AGENT API** | Reference for webhook format and agent system prompts |
+| Tab | What it does |
+|-----|--------------|
+| **BOARD** | See your projects and their status |
+| **LOG UPDATE** | Paste text → app organizes it → save to the board |
+| **REPORTER** | Create helper scripts for outside projects |
+| **PREP AGENT** | Check if an outside project is ready + make a config file |
+| **AGENT API** | Backup/export data; see how outside programs send updates |
 
 ---
 
-## Path A: Quick start (no external repo yet)
+## Part 1: Try the app
 
-Best if you just want to try the tracker or log updates manually.
+No extra folders or scripts needed.
 
-### 1. Add a project on the Board
+### Step 1: Add a project
 
-1. Open [http://localhost:3000](http://localhost:3000).
-2. Click **BOARD** (selected by default).
-3. Type a name in **New project name…** and click **+ ADD**.
+1. Go to [http://localhost:3000](http://localhost:3000).
+2. You should be on **BOARD** (top menu).
+3. Type a name (e.g. `History Essay Bot`) in **New project name…**
+4. Click **+ ADD**.
 
-You'll see a project card with status **Active**. Click it to expand the update log.
+You will see a card for your project.
 
-### 2. Log your first update
+### Step 2: Log an update
 
-1. Click **LOG UPDATE**.
-2. Paste a raw work summary — from ChatGPT, Claude, Gemini, or your own notes. For example:
+1. Click **LOG UPDATE** in the top menu.
+2. Paste any summary of work — from ChatGPT, Claude, or your own notes. Example:
 
    ```
-   Today I added a web search tool to the agent. It uses SerpAPI.
-   Ran out of API credits so testing isn't done yet.
-   Next step is to top up credits and run the eval suite.
+   Today I fixed the bibliography bug. Still need to test on mobile.
+   Next: run tests on my phone.
    ```
 
 3. Click **⟳ PARSE UPDATE**.
-4. Review the parsed fields on the right (project name, type, status, summary, etc.).
+4. Check the fields on the right (project name, summary, status).
 5. Click **✓ COMMIT UPDATE**.
 
-The update appears on the **BOARD**. If the project name in the parsed update doesn't match an existing card, the tracker creates one automatically.
+Your update shows up on **BOARD**. Click the project card to read it.
 
-### 3. (Optional) Use the reporter prompt elsewhere
+### Step 3 (optional): Copy a prompt for ChatGPT or Claude
 
 1. Click **REPORTER** → **◈ PROMPT REF**.
 2. Click **⎘ COPY PROMPT**.
-3. Paste it as a system prompt in any AI tool so future responses follow the tracker's JSON schema.
-4. Copy those responses back into **LOG UPDATE** → parse → commit.
+3. Paste it into ChatGPT or Claude so their answers use the tracker's format.
+4. Copy their answer back into **LOG UPDATE** → parse → commit.
+
+**Part 1 is complete.** You know the basics.
 
 ---
 
-## Path B: Connect an external project
+## Part 2: Connect an outside project (optional)
 
-Best when you have a real codebase and want automated reporting.
+Do this when you have a real code folder and want the tracker to help it send updates automatically.
 
-### 1. Prep the external project
+### Step 1: Run Prep Agent
 
 1. Click **PREP AGENT**.
-2. Fill in what you know about the project (name is required):
-   - **Project Name**, **What it does**, **Stack / Tools**, **AI Model**
-   - **Known Blockers** and **Known Gaps / Issues** if applicable
-   - **Current Status** and **Agent Mode** (autonomous vs human-in-loop)
+2. Fill in the form (at minimum **Project Name**).
 3. Click **◈ RUN PREP AGENT**.
+4. Click **⎘ COPY** next to **`.tracker-config.json`**.
+5. Save that file in your outside project's main folder.
 
-The Prep Agent returns:
+Prep also adds an update to your **BOARD**.
 
-- A **compliance audit** scored across six categories
-- A **`.tracker-config.json`** handshake file — click **⎘ COPY** and save it to your external project's root
-- An optional **prep script** for automated fixes
-- A **compliance update** logged to the Board automatically
+### Step 2: Create a reporter script
 
-### 2. Generate a reporter
+Pick **one** option:
 
-Choose based on how much the tracker already knows:
-
-**Push mode** — you know the project details; the tracker generates a pre-configured reporter:
+**Option A — Push (you know the project details)**
 
 1. Click **REPORTER** → **▲ PUSH MODE**.
-2. Fill in project name, description, stack, model, stage, and agent type.
+2. Fill in project name and description.
 3. Click **▲ GENERATE PUSH REPORTER + LOG FIRST UPDATE**.
-4. Copy the **PUSH REPORTER SCRIPT** and save it (e.g. as `reporter.py`) in your external project.
+4. Copy the script and save it in your outside project (e.g. `reporter.py`).
 
-**Pull mode — autonomous** — the reporter discovers the project on its own:
+**Option B — Pull, automatic (script reads the folder itself)**
 
 1. Click **REPORTER** → **▼ PULL MODE** → **🤖 Autonomous Pull**.
 2. Click **▼ GENERATE AUTONOMOUS PULL REPORTER**.
-3. Copy the script and drop it into your external project folder.
+3. Copy the script into your outside project.
 
-**Pull mode — human interview** — you describe the project in a chat:
+**Option C — Pull, interview (you answer questions)**
 
 1. Click **REPORTER** → **▼ PULL MODE** → **👤 Human Interview**.
-2. Click **▼ START INTERVIEW** and answer one question at a time.
-3. When done, the first update is logged to the Board automatically.
+2. Click **▼ START INTERVIEW** and answer each question.
+3. When finished, check **BOARD** for the new update.
 
-### 3. Verify on the Board
+### Step 3: Check the board
 
 1. Click **BOARD**.
-2. Confirm your project card shows the expected status and latest update.
-3. Click the card to review the full update history.
+2. Make sure your project shows the latest update.
 
 ---
 
-## Recommended order
+## What to read next
 
-```
-Install tracker → Open app → Add/log first update (Path A)
-                                    ↓
-              Need automation? → Prep Agent → Push or Pull reporter → Drop files in external repo
-                                    ↓
-              Need API details? → AGENT API tab + API Reference guide
-```
-
-For deeper walkthroughs of Prep, Push, and Pull, continue to [Workflows](./WORKFLOWS.md).  
-For scenario-based examples, see [Examples](./EXAMPLES.md).
+| Goal | Guide |
+|------|-------|
+| More detail on Prep / Push / Pull | [Workflows](./WORKFLOWS.md) |
+| Real-world examples | [Examples](./EXAMPLES.md) |
+| Something broke | [Troubleshooting](./TROUBLESHOOTING.md) |
 
 ---
 
-## Important limitations
+## Good to know
 
-- **Server + browser storage** — projects persist in `data/projects.json` on the server and cache in this browser's `localStorage`. Run `npm run dev` (starts both API and UI). Export/import on **AGENT API** for backup.
-- **Agent authentication** — external agents must send `X-Agent-Key` matching `VITE_AGENT_KEY` in `.env` (default: `dev-agent-key`). Change this before exposing the tracker to a network.
-- **API key required** — AI features (parse, prep, reporter generation) need a valid `VITE_ANTHROPIC_API_KEY` in `self-hosted/.env`. Restart `npm run dev` after changing it.
-
----
-
-## Troubleshooting
-
-| Problem | What to check |
-|---|---|
-| Parse / Prep / Reporter buttons do nothing | `.env` has a real `VITE_ANTHROPIC_API_KEY`; dev server was restarted after editing `.env` |
-| "Parse failed" toast | API key valid and has credits; check browser console for errors |
-| Project doesn't appear after commit | Check the **project** field in the parsed update — a new card is created from that name |
-| Generated script doesn't run in external repo | Scripts are starting points — ensure `VITE_TRACKER_URL` and `VITE_AGENT_KEY` in `.env` match what the script sends |
-| Agent POST not on board | Run `npm run dev` (API required); wait ~5s for UI poll; check `X-Agent-Key` header |
-
-More fixes: [Troubleshooting Guide](./TROUBLESHOOTING.md)
+- **Your data is saved** in `self-hosted/data/projects.json` while the app runs. You can also export a backup from **AGENT API** → **⬇ EXPORT JSON**.
+- **Keep `npm run dev` running** while you use the app.
+- **AI features need your API key** in `.env`. If you change `.env`, restart the app.
+- **Outside agents** need the same key as `VITE_AGENT_KEY` in `.env` (default: `dev-agent-key`).
 
 ---
 
-**Next:** [Workflows](./WORKFLOWS.md) — detailed Prep, Push, and Pull walkthroughs in the UI.
+## Common problems
+
+| Problem | What to try |
+|---------|-------------|
+| Parse button does nothing | Check API key in `.env`; restart `npm run dev` |
+| Wrong project name on board | Edit the **project** field before clicking commit |
+| Outside script fails | Make sure `VITE_TRACKER_URL` and `VITE_AGENT_KEY` are in `.env` |
+
+More help: [Troubleshooting](./TROUBLESHOOTING.md)
