@@ -111,33 +111,135 @@ This file goes in the **project you are tracking** (your homework app, Python re
 
 On Mac/Linux the leading dot makes it a “hidden” file — that is normal. In VS Code you will still see it in the file list.
 
+Step 2 reporter scripts (`reporter.py`) go in this **same folder** — see [Where to save files in your outside project](#where-to-save-files-in-your-outside-project).
+
 ### Step 2: Create a reporter script
 
-Pick **one** option:
+A **reporter script** is a small Python file that lives in your outside project and sends updates to the tracker. Pick **one** option below.
 
-**Option A — Push (you know the project details)**
+**All reporter scripts go in the same place as `.tracker-config.json`** — the **top folder** of your outside project (not inside `ai-project-tracker`). See [Where to save files in your outside project](#where-to-save-files-in-your-outside-project).
 
-1. Click **REPORTER** → **▲ PUSH MODE**.
-2. Fill in **Project Name** and **What it does** (required).
-3. Click **▲ GENERATE PUSH REPORTER + LOG FIRST UPDATE**.
-4. Copy the script and save it in your outside project (e.g. `reporter.py`).
+---
 
-**Option B — Pull, automatic (script reads the folder itself)**
+#### Option A — Push (you already filled in the project details in Prep)
 
-1. Click **REPORTER** → **▼ PULL MODE** → **🤖 Autonomous Pull**.
-2. Click **▼ GENERATE AUTONOMOUS PULL REPORTER**.
-3. Copy the script into your outside project.
+Use this when you know your project's name, tools, and status.
 
-**Option C — Pull, interview (you answer questions)**
+1. Click **REPORTER** in the top menu.
+2. Click **▲ PUSH MODE** (green tab).
+3. Fill in **Project Name** and **What it does** (required). Use the **same project name** as in Step 1.
+4. Fill in **Stack / Tools** and **AI Model** if you can.
+5. Click **▲ GENERATE PUSH REPORTER + LOG FIRST UPDATE**.
+6. Wait until **PUSH REPORTER SCRIPT** appears on the right.
+7. Click **⎘ COPY** next to **PUSH REPORTER SCRIPT**.
+8. Save the file — see [Save a reporter script (Push)](#save-a-reporter-script-push) below.
 
-1. Click **REPORTER** → **▼ PULL MODE** → **👤 Human Interview**.
-2. Click **▼ START INTERVIEW** and answer each question.
-3. When finished, check **BOARD** for the new update.
+The tracker also logs a **first update** on **BOARD** automatically. You will confirm that in Step 3.
 
-### Step 3: Check the board
+---
 
-1. Click **BOARD**.
-2. Make sure your project shows the latest update.
+#### Option B — Pull, automatic (the script reads your project folder)
+
+Use this when the tracker should **inspect your folder** (README, git history, etc.) and figure out the project on its own.
+
+1. Click **REPORTER** in the top menu.
+2. Click **▼ PULL MODE** (purple tab).
+3. Click **🤖 Autonomous Pull**.
+4. Click **▼ GENERATE AUTONOMOUS PULL REPORTER**.
+5. Wait until **PULL REPORTER SCRIPT** appears.
+6. Click **⎘ COPY** next to **PULL REPORTER SCRIPT**.
+7. Save the file — see [Save a reporter script (Pull)](#save-a-reporter-script-pull) below.
+8. **Run the script once** from your outside project's folder (Terminal):
+
+   ```bash
+   cd /Users/you/Projects/YourProjectName
+   python3 reporter.py
+   ```
+
+   (Use `python reporter.py` on Windows if `python3` does not work.)
+
+   The script scans your folder and sends a first update to the tracker. Then continue to Step 3.
+
+---
+
+#### Option C — Pull, interview (you answer questions in the browser)
+
+Use this when you want to **describe the project yourself** instead of saving a script.
+
+1. Click **REPORTER** in the top menu.
+2. Click **▼ PULL MODE** (purple tab).
+3. Click **👤 Human Interview**.
+4. Click **▼ START INTERVIEW**.
+5. Read each question and type your answer in **Type your answer…**, then press **→** (or Enter).
+6. When the tracker has enough info, it shows **✓ All set — I have enough context. First update has been logged to the board.**
+7. Go to Step 3 — **no file to save** for this option.
+
+---
+
+### Where to save files in your outside project
+
+These files belong in the **project you are tracking** — **not** in `ai-project-tracker/self-hosted`.
+
+| File | Exact name | Where |
+|------|------------|--------|
+| Config from Prep (Step 1) | `.tracker-config.json` | Top folder of your outside project |
+| Reporter script (Option A or B) | `reporter.py` (recommended) | Same top folder |
+
+**Example folder** for a project called ReelDive:
+
+```
+/Users/you/Projects/ReelDive/
+├── .tracker-config.json    ← from Step 1
+├── reporter.py             ← from Step 2 (Option A or B)
+├── README.md
+└── ... your other files
+```
+
+---
+
+### Save a reporter script (Push)
+
+After you click **⎘ COPY** on **PUSH REPORTER SCRIPT**:
+
+1. Open a text editor (VS Code works well).
+2. Paste the script.
+3. Save As → go to your outside project's **top folder** (same folder as `.tracker-config.json`).
+4. Name the file **`reporter.py`**.
+5. You do **not** need to run this file right away for Push — it is ready for your AI agent or automation to call later. The tracker already logged a first update when you clicked Generate.
+
+---
+
+### Save a reporter script (Pull)
+
+After you click **⎘ COPY** on **PULL REPORTER SCRIPT**:
+
+1. Open a text editor.
+2. Paste the script.
+3. Save As → your outside project's **top folder**.
+4. Name the file **`reporter.py`**.
+5. Open Terminal, go to that folder, and run:
+
+   ```bash
+   cd /Users/you/Projects/YourProjectName
+   python3 reporter.py
+   ```
+
+   Replace the path with your real project folder. The script reads your project and sends an update to the tracker.
+
+---
+
+### Step 3: Confirm it worked on the board
+
+1. Click **BOARD** in the top menu.
+2. Find the **card with your project name** (the same name you used in Prep or Push).
+3. Click that card.
+4. You should see at least one **update** listed — for example a prep audit, a push deployment, or text from the pull script or interview.
+5. If the card is missing or has no updates:
+   - Make sure `npm run dev` is still running in Terminal.
+   - For Option B, confirm you ran `python3 reporter.py` in your outside project folder.
+   - For Option A or C, try **LOG UPDATE** to paste a short status and click **✓ COMMIT UPDATE**.
+
+When you see your project and its update on **BOARD**, Part 2 is complete.
 
 ---
 
