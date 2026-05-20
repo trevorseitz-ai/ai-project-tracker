@@ -76,6 +76,8 @@ npm run dev
 - Node.js 18+
 - An [Anthropic API key](https://console.anthropic.com/keys)
 
+**Full documentation:** see [docs/README.md](./docs/README.md) for guides in recommended reading order.
+
 ---
 
 ## Token Usage
@@ -211,6 +213,7 @@ ai-project-tracker/
 │   └── .env.example         ← copy to .env and add your API key
 ├── .gitignore
 ├── CHANGELOG.md
+├── docs/                    ← documentation hub (start at docs/README.md)
 ├── LICENSE
 └── README.md
 ```
