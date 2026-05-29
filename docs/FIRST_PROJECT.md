@@ -76,13 +76,16 @@ Your update shows up on **BOARD**. Click the project card to read it.
 
 Do this when you have a real code folder and want the tracker to help it send updates automatically.
 
+**Enter project details once:** Use **SELECT PROJECT** on **PREP AGENT** and **REPORTER → ▲ PUSH MODE** to pick a board project (or click a card on **BOARD**). The same name, description, stack, and model carry over — you do not re-type them for Push.
+
 ### Step 1: Run Prep Agent
 
 1. Click **PREP AGENT**.
-2. Fill in the form (at minimum **Project Name**).
-3. Click **◈ RUN PREP AGENT**.
-4. When Prep finishes, click **⎘ COPY .tracker-config.json** at the top of the results (scroll down if needed).
-5. Save the file in your **outside project** — see [Where to save `.tracker-config.json`](#where-to-save-tracker-configjson) below.
+2. Open **SELECT PROJECT** and choose your project from the list — or click that project’s card on **BOARD** first, then come back to **PREP AGENT**.
+3. Fill in the form (at minimum **Project Name**). Other fields may already be filled from the board.
+4. Click **◈ RUN PREP AGENT**.
+5. When Prep finishes, click **⎘ COPY .tracker-config.json** at the top of the results (scroll down if needed).
+6. Save the file in your **outside project** — see [Where to save `.tracker-config.json`](#where-to-save-tracker-configjson) below.
 
 Prep also adds an update to your **BOARD**.
 
@@ -111,34 +114,66 @@ This file goes in the **project you are tracking** (your homework app, Python re
 
 On Mac/Linux the leading dot makes it a “hidden” file — that is normal. In VS Code you will still see it in the file list.
 
-Step 2 reporter scripts (`reporter.py`) go in this **same folder** — see [Where to save files in your outside project](#where-to-save-files-in-your-outside-project).
+Step 2 reporter scripts (`reporter.py`) go in this **same folder** — see Step 2 below.
 
 ### Step 2: Create a reporter script
 
-A **reporter script** is a small Python file that lives in your outside project and sends updates to the tracker. Pick **one** option below.
+A **reporter script** is a small Python file that sends updates from your outside project to the tracker. Pick **one** path below — **Push** or **Pull** — not both.
 
-**All reporter scripts go in the same place as `.tracker-config.json`** — the **top folder** of your outside project (not inside `ai-project-tracker`). See [Where to save files in your outside project](#where-to-save-files-in-your-outside-project).
+**Where files live:** Everything goes in the **top folder** of your outside project (same place as `.tracker-config.json`), **not** inside `ai-project-tracker`.
+
+**Example** for a project called ReelDive at `/Users/you/Projects/ReelDive/`:
+
+```
+/Users/you/Projects/ReelDive/
+├── .tracker-config.json    ← from Step 1
+├── reporter.py             ← from Step 2 (Push or Pull automatic only)
+├── README.md
+└── ... your other files
+```
 
 ---
 
-#### Option A — Push (you already filled in the project details in Prep)
+## Push Reporter (complete these steps first if you use Push)
 
-Use this when you know your project's name, tools, and status.
+Use Push after Step 1 when your project details are already filled in from **SELECT PROJECT**.
 
 1. Click **REPORTER** in the top menu.
 2. Click **▲ PUSH MODE** (green tab).
-3. Fill in **Project Name** and **What it does** (required). Use the **same project name** as in Step 1.
-4. Fill in **Stack / Tools** and **AI Model** if you can.
-5. Click **▲ GENERATE PUSH REPORTER + LOG FIRST UPDATE**.
-6. Wait until **PUSH REPORTER SCRIPT** appears on the right.
-7. Click **⎘ COPY** next to **PUSH REPORTER SCRIPT**.
-8. Save the file — see [Save a reporter script (Push)](#save-a-reporter-script-push) below.
+3. Open **SELECT PROJECT** and pick the **same project** as Step 1 (fields should match Prep automatically).
+4. Review the form — change anything that looks wrong:
+   - **Project Name** and **What it does** (required)
+   - **Stack / Tools** and **AI Model** (optional)
+   - **Stage** — **🌱 New** if you are just starting, or **🔧 In Progress** if work has already begun
+   - **Receiving agent type** — **🤖 Autonomous** if a script runs on its own, or **👤 Human-in-loop** if a person drives each step
+   - If you chose **🔧 In Progress**, fill in **Current state / context** (where you left off, blockers, etc.)
 
-The tracker also logs a **first update** on **BOARD** automatically. You will confirm that in Step 3.
+   | Field | Choose this when… |
+   |-------|-------------------|
+   | **🌱 New** | The outside project is brand new — little or no code yet |
+   | **🔧 In Progress** | You already have code, docs, or partial work — then fill in **Current state / context** |
+   | **🤖 Autonomous** | The reporter will run without a person clicking buttons each time |
+   | **👤 Human-in-loop** | A person will review or trigger updates manually |
+
+5. Click **▲ GENERATE PUSH REPORTER + LOG FIRST UPDATE**.
+6. Wait for the green toast **Push reporter ready + first update logged ✓** and for **FIRST UPDATE LOGGED** to appear on the right — that is when the board gets a new entry. Saving `reporter.py` alone does **not** add anything to the board.
+7. Wait until **PUSH REPORTER SCRIPT** appears on the right.
+8. Click **⎘ COPY** next to **PUSH REPORTER SCRIPT**.
+9. Open a text editor (VS Code works well).
+10. Paste the script.
+11. Save As → go to your outside project's **top folder** (the same folder as `.tracker-config.json`).
+12. Name the file exactly **`reporter.py`**.
+13. You do **not** need to run `reporter.py` right away for Push — it is ready for your AI agent or automation later. The tracker already logged a **first update** on **BOARD** when Generate succeeded in step 5.
+
+Push is done. Continue to [Step 3](#step-3-confirm-it-worked-on-the-board).
 
 ---
 
-#### Option B — Pull, automatic (the script reads your project folder)
+## Pull Reporter (use this section only if you did not use Push above)
+
+Pull has two options. Pick **one**.
+
+### Pull — automatic (script reads your project folder)
 
 Use this when the tracker should **inspect your folder** (README, git history, etc.) and figure out the project on its own.
 
@@ -148,23 +183,26 @@ Use this when the tracker should **inspect your folder** (README, git history, e
 4. Click **▼ GENERATE AUTONOMOUS PULL REPORTER**.
 5. Wait until **PULL REPORTER SCRIPT** appears.
 6. Click **⎘ COPY** next to **PULL REPORTER SCRIPT**.
-7. Save the file — see [Save a reporter script (Pull)](#save-a-reporter-script-pull) below.
-8. **Run the script once** from your outside project's folder (Terminal):
+7. Open a text editor.
+8. Paste the script.
+9. Save As → your outside project's **top folder** (same folder as `.tracker-config.json`).
+10. Name the file exactly **`reporter.py`**.
+11. Open **Terminal** and run the script once from that folder:
 
-   ```bash
-   cd /Users/you/Projects/YourProjectName
-   python3 reporter.py
-   ```
+    ```bash
+    cd /Users/you/Projects/YourProjectName
+    python3 reporter.py
+    ```
 
-   (Use `python reporter.py` on Windows if `python3` does not work.)
+    Replace the path with your real project folder. Use `python reporter.py` on Windows if `python3` does not work.
 
-   The script scans your folder and sends a first update to the tracker. Then continue to Step 3.
+12. The script scans your folder and sends a first update to the tracker.
 
----
+Pull automatic is done. Continue to [Step 3](#step-3-confirm-it-worked-on-the-board).
 
-#### Option C — Pull, interview (you answer questions in the browser)
+### Pull — interview (you answer questions in the browser)
 
-Use this when you want to **describe the project yourself** instead of saving a script.
+Use this when you want to **describe the project yourself** instead of saving a script. **No file to save.**
 
 1. Click **REPORTER** in the top menu.
 2. Click **▼ PULL MODE** (purple tab).
@@ -172,59 +210,8 @@ Use this when you want to **describe the project yourself** instead of saving a 
 4. Click **▼ START INTERVIEW**.
 5. Read each question and type your answer in **Type your answer…**, then press **→** (or Enter).
 6. When the tracker has enough info, it shows **✓ All set — I have enough context. First update has been logged to the board.**
-7. Go to Step 3 — **no file to save** for this option.
 
----
-
-### Where to save files in your outside project
-
-These files belong in the **project you are tracking** — **not** in `ai-project-tracker/self-hosted`.
-
-| File | Exact name | Where |
-|------|------------|--------|
-| Config from Prep (Step 1) | `.tracker-config.json` | Top folder of your outside project |
-| Reporter script (Option A or B) | `reporter.py` (recommended) | Same top folder |
-
-**Example folder** for a project called ReelDive:
-
-```
-/Users/you/Projects/ReelDive/
-├── .tracker-config.json    ← from Step 1
-├── reporter.py             ← from Step 2 (Option A or B)
-├── README.md
-└── ... your other files
-```
-
----
-
-### Save a reporter script (Push)
-
-After you click **⎘ COPY** on **PUSH REPORTER SCRIPT**:
-
-1. Open a text editor (VS Code works well).
-2. Paste the script.
-3. Save As → go to your outside project's **top folder** (same folder as `.tracker-config.json`).
-4. Name the file **`reporter.py`**.
-5. You do **not** need to run this file right away for Push — it is ready for your AI agent or automation to call later. The tracker already logged a first update when you clicked Generate.
-
----
-
-### Save a reporter script (Pull)
-
-After you click **⎘ COPY** on **PULL REPORTER SCRIPT**:
-
-1. Open a text editor.
-2. Paste the script.
-3. Save As → your outside project's **top folder**.
-4. Name the file **`reporter.py`**.
-5. Open Terminal, go to that folder, and run:
-
-   ```bash
-   cd /Users/you/Projects/YourProjectName
-   python3 reporter.py
-   ```
-
-   Replace the path with your real project folder. The script reads your project and sends an update to the tracker.
+Pull interview is done. Continue to [Step 3](#step-3-confirm-it-worked-on-the-board).
 
 ---
 
@@ -236,8 +223,8 @@ After you click **⎘ COPY** on **PULL REPORTER SCRIPT**:
 4. You should see at least one **update** listed — for example a prep audit, a push deployment, or text from the pull script or interview.
 5. If the card is missing or has no updates:
    - Make sure `npm run dev` is still running in Terminal.
-   - For Option B, confirm you ran `python3 reporter.py` in your outside project folder.
-   - For Option A or C, try **LOG UPDATE** to paste a short status and click **✓ COMMIT UPDATE**.
+   - For **Pull — automatic**, confirm you ran `python3 reporter.py` in your outside project folder.
+   - For **Push** or **Pull — interview**, try **LOG UPDATE** to paste a short status and click **✓ COMMIT UPDATE**.
 
 When you see your project and its update on **BOARD**, Part 2 is complete.
 

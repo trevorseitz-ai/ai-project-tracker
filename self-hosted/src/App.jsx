@@ -11,29 +11,52 @@ import {
 import { fetchProjectsFromServer, saveProjectsToServer } from "./api.js";
 import { commitUpdateToProjects } from "../shared/projectLogic.js";
 import { requestAnthropic, parseJsonFromModel, copyTextToClipboard } from "./anthropic.js";
+import { getPrepErrorGuidance, getPrepWarningGuidance } from "./prepErrors.js";
+import {
+  buildHandshakeFromPrepForm,
+  validatePrepForm,
+  getPrepFieldLimit,
+} from "./prepValidation.js";
+import {
+  loadPrepReports,
+  savePrepReports,
+  getStoredPrepReport,
+  upsertPrepReport,
+  prepReportSummary,
+} from "./prepReports.js";
+import { PrepReportPanel } from "./prepUi.jsx";
+import {
+  loadProjectProfiles,
+  saveProjectProfiles,
+  getStoredProfile,
+  upsertStoredProfile,
+  profileFromBoardProject,
+  toPrepForm,
+  toPushForm,
+  mergePrepAndPush,
+} from "./projectProfiles.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const TS = () => new Date().toISOString();
 const uid = () => Math.random().toString(36).slice(2, 9);
 
-function buildFallbackPrepResult(prepForm, errorMessage) {
+function buildFallbackPrepResult(prepForm, guidance) {
+  const steps = guidance?.steps?.length ? guidance.steps : ["Click ◈ RUN PREP AGENT again."];
   return normalizePrepResult(
     {
       audit: { overall_score: 0, categories: [] },
-      prep_summary: "Generated from your form because the full AI audit could not be completed.",
-      human_actions_required: errorMessage ? [errorMessage] : [],
+      prep_summary: guidance?.message || "Generated from your form because the full AI audit could not be completed.",
+      human_actions_required: steps,
       compliance_update: {
-        type: "progress",
+        type: "blocker",
         project: prepForm.projectName,
-        summary: `Prep config created for ${prepForm.projectName}`,
-        detail: errorMessage
-          ? `Full audit unavailable: ${errorMessage}. Copy .tracker-config.json below — it was built from your form.`
-          : "Copy .tracker-config.json below into your outside project folder.",
+        summary: `Prep audit failed for ${prepForm.projectName}`,
+        detail: guidance?.message || "The full audit did not finish. Follow the fix steps and run Prep again.",
         status: prepForm.status,
-        blockers: prepForm.blockers ? [prepForm.blockers] : [],
-        next_steps: ["Deploy reporter agent", "Run Prep again for a full audit"],
-        confidence: 0.5,
+        blockers: [guidance?.title || "Prep audit incomplete"],
+        next_steps: steps,
+        confidence: 0,
         missing_fields: [],
       },
     },
@@ -59,17 +82,31 @@ function ensureComplianceUpdate(parsed, prepForm) {
   };
 }
 function normalizePrepResult(parsed, prepForm) {
-  const handshake = applyHandshakeConfig(
-    parsed.handshake_file || {
-      project_name: prepForm.projectName,
-      description: prepForm.description || "",
-      model_used: prepForm.model || "",
-      stack: prepForm.stack ? prepForm.stack.split(",").map(s => s.trim()).filter(Boolean) : [],
-      status: prepForm.status,
-      blockers: prepForm.blockers ? [prepForm.blockers] : [],
-      next_steps: ["Deploy reporter agent"],
-    }
-  );
+  const formHandshake = buildHandshakeFromPrepForm(prepForm);
+  const aiHandshake = parsed.handshake_file && typeof parsed.handshake_file === "object"
+    ? parsed.handshake_file
+    : {};
+
+  const handshake = applyHandshakeConfig({
+    ...aiHandshake,
+    ...formHandshake,
+    project_name: formHandshake.project_name,
+    description: formHandshake.description,
+    model_used: formHandshake.model_used,
+    stack: formHandshake.stack,
+    status: formHandshake.status,
+    blockers: formHandshake.blockers,
+    known_issues: formHandshake.known_issues.length
+      ? formHandshake.known_issues
+      : Array.isArray(aiHandshake.known_issues)
+        ? aiHandshake.known_issues
+        : [],
+    reporter_mode: formHandshake.reporter_mode,
+    prep_version: formHandshake.prep_version,
+    next_steps: Array.isArray(aiHandshake.next_steps) && aiHandshake.next_steps.length
+      ? aiHandshake.next_steps
+      : formHandshake.next_steps,
+  });
 
   const audit = parsed.audit && Array.isArray(parsed.audit.categories)
     ? parsed.audit
@@ -353,6 +390,7 @@ function ConfidenceMeter({ value }) {
 export default function App() {
   const importInputRef = useRef(null);
   const prepResultsRef = useRef(null);
+  const prepFormRef = useRef(null);
   const [tab, setTab] = useState("board");
   const [projects, setProjects] = useState(() => loadProjects());
   const [rawInput, setRawInput] = useState("");
@@ -389,8 +427,12 @@ export default function App() {
   const [prepResult, setPrepResult] = useState(null);
   const [prepError, setPrepError] = useState(null);
   const [prepWarning, setPrepWarning] = useState(null);
-  const [prepScriptCopied, setPrepScriptCopied] = useState(false);
-  const [handshakeCopied, setHandshakeCopied] = useState(false);
+  const [prepFieldErrors, setPrepFieldErrors] = useState({});
+  const [prepInputError, setPrepInputError] = useState(null);
+  const [prepReports, setPrepReports] = useState(() => loadPrepReports());
+  const [boardPrepReportOpen, setBoardPrepReportOpen] = useState(false);
+  const [projectProfiles, setProjectProfiles] = useState(() => loadProjectProfiles());
+  const [focusedProjectName, setFocusedProjectName] = useState("");
 
   useEffect(() => {
     saveProjects(projects);
@@ -421,14 +463,98 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (prepResult && prepResultsRef.current) {
-      prepResultsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [prepResult]);
+    if (!prepResult) return;
+    prepResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [prepResult, prepError]);
 
-  function showToast(msg, ok = true) {
+  useEffect(() => {
+    if (!activeLog) return;
+    const proj = projects.find(p => p.id === activeLog);
+    if (proj) loadWorkflowProject(proj.name);
+    // Only reload forms when the user opens a different board card — not on every poll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeLog]);
+
+  function persistWorkflowProfile(patch) {
+    const name = (patch.projectName || focusedProjectName || prepForm.projectName || pushForm.projectName || "").trim();
+    if (!name) return;
+
+    const next = upsertStoredProfile(loadProjectProfiles(), name, patch);
+    saveProjectProfiles(next);
+    setProjectProfiles(next);
+    setFocusedProjectName(name);
+  }
+
+  function loadWorkflowProject(name) {
+    if (!name?.trim()) return;
+
+    const profiles = loadProjectProfiles();
+    const proj = projects.find(p => p.name.toLowerCase() === name.trim().toLowerCase());
+    const stored = getStoredProfile(profiles, name);
+    const profile = proj
+      ? profileFromBoardProject(proj, stored)
+      : { projectName: name.trim(), ...stored };
+
+    setProjectProfiles(profiles);
+    setPrepForm(toPrepForm(profile));
+    setPushForm(toPushForm(profile));
+    setFocusedProjectName(profile.projectName);
+  }
+
+  function handleWorkflowProjectSelect(name) {
+    if (prepForm.projectName.trim() || pushForm.projectName.trim()) {
+      persistWorkflowProfile(mergePrepAndPush(prepForm, pushForm));
+    }
+    if (name) loadWorkflowProject(name);
+    else setFocusedProjectName("");
+  }
+
+  function updatePrepField(key, value) {
+    setPrepForm(f => {
+      const next = { ...f, [key]: value };
+      if (key === "projectName") setFocusedProjectName(value);
+      if (["projectName", "description", "stack", "model"].includes(key)) {
+        setPushForm(p => ({ ...p, [key]: value }));
+      }
+      return next;
+    });
+    setPrepFieldErrors(prev => {
+      if (!prev[key] && !prev._form) return prev;
+      const next = { ...prev };
+      delete next[key];
+      if (key === "description" || key === "blockers" || key === "knownIssues" || key === "stack") {
+        delete next._form;
+      }
+      return next;
+    });
+    if (prepInputError) setPrepInputError(null);
+  }
+
+  function renderProjectPicker(hint) {
+    return (
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 10, color: "#475569", letterSpacing: "0.1em", marginBottom: 6 }}>SELECT PROJECT</div>
+        <select
+          style={{ ...S.input, padding: "8px 12px", cursor: "pointer" }}
+          value={focusedProjectName}
+          onChange={e => handleWorkflowProjectSelect(e.target.value)}
+        >
+          <option value="">— Choose a project from the board —</option>
+          {projects.map(p => (
+            <option key={p.id} value={p.name}>{p.name}</option>
+          ))}
+        </select>
+        <div style={{ fontSize: 10, color: "#475569", marginTop: 6, lineHeight: 1.5 }}>
+          {hint} You can also click a project card on <strong style={{ color: "#94A3B8" }}>BOARD</strong> to select it.
+        </div>
+      </div>
+    );
+  }
+
+  function showToast(msg, ok = true, durationMs = null) {
     setToast({ msg, ok });
-    setTimeout(() => setToast(null), 2800);
+    const ms = durationMs ?? (ok ? 2800 : 7000);
+    setTimeout(() => setToast(null), ms);
   }
 
   async function parseUpdate() {
@@ -508,6 +634,7 @@ export default function App() {
   // ── PUSH: tracker has context, generates pre-configured reporter
   async function runPush() {
     if (!pushForm.projectName.trim() || !pushForm.description.trim()) return;
+    persistWorkflowProfile(mergePrepAndPush(prepForm, pushForm));
     setPushing(true); setPushResult(null);
     const userMsg = `Project: ${pushForm.projectName}
 Description: ${pushForm.description}
@@ -520,18 +647,24 @@ TRACKER_URL: ${trackerUrl}
 AGENT_KEY: ${agentKey}
 Generate the push reporter now.`;
     try {
-      const { text: raw } = await requestAnthropic({
-        max_tokens: 4000,
+      const { text: raw, stopReason } = await requestAnthropic({
+        max_tokens: 8192,
         system: PUSH_AGENT_SYSTEM,
         messages: [{ role: "user", content: userMsg }],
       });
-      const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+      const parsed = parseJsonFromModel(raw);
       if (parsed.agent_script) parsed.agent_script = injectTrackerIntoScript(parsed.agent_script);
+      if (!parsed.first_update) {
+        throw new Error("AI response missing first_update — try again.");
+      }
       parsed.first_update.id = uid(); parsed.first_update.timestamp = TS();
       setPushResult(parsed);
       commitToBoard(parsed.first_update, pushForm.model);
-      showToast("Push reporter ready + first update logged ✓");
-    } catch (e) { showToast(e.message || "Generation failed", false); }
+      const warning = stopReason === "max_tokens"
+        ? "Response was cut off — copy the script below, then generate again if it looks incomplete."
+        : null;
+      showToast(warning || "Push reporter ready + first update logged ✓", !!warning);
+    } catch (e) { showToast(e.message || "Generation failed — no board update was logged. Try Generate again.", false); }
     setPushing(false);
   }
 
@@ -539,17 +672,23 @@ Generate the push reporter now.`;
   async function runPullAutonomous() {
     setPulling(true); setPullResult(null);
     try {
-      const { text: raw } = await requestAnthropic({
-        max_tokens: 4000,
+      const { text: raw, stopReason } = await requestAnthropic({
+        max_tokens: 8192,
         system: PULL_AGENT_SYSTEM,
         messages: [{ role: "user", content: `Generate the autonomous pull reporter. TRACKER_URL=${trackerUrl} AGENT_KEY=${agentKey}` }],
       });
-      const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+      const parsed = parseJsonFromModel(raw);
       if (parsed.agent_script) parsed.agent_script = injectTrackerIntoScript(parsed.agent_script);
+      if (!parsed.first_update) {
+        throw new Error("AI response missing first_update — try again.");
+      }
       parsed.first_update.id = uid(); parsed.first_update.timestamp = TS();
       setPullResult(parsed);
       commitToBoard(parsed.first_update, null);
-      showToast("Pull reporter generated ✓");
+      const warning = stopReason === "max_tokens"
+        ? "Response was cut off — copy the script below, then generate again if it looks incomplete."
+        : null;
+      showToast(warning || "Pull reporter generated ✓", !!warning);
     } catch (e) { showToast(e.message || "Generation failed", false); }
     setPulling(false);
   }
@@ -608,19 +747,72 @@ Generate the push reporter now.`;
 
 
 
-  function applyPrepResult(parsed, { errorMessage = null, warning = null } = {}) {
+  function persistPrepReport(projectName, snapshot) {
+    const trimmed = projectName?.trim();
+    if (!trimmed) return;
+
+    setPrepReports(prev => {
+      const next = upsertPrepReport(prev, trimmed, snapshot);
+      savePrepReports(next);
+      return next;
+    });
+  }
+
+  function openPrepAgentForProject(name) {
+    if (!name?.trim()) return;
+    loadWorkflowProject(name);
+    const stored = getStoredPrepReport(prepReports, name);
+    if (stored) {
+      setPrepResult(stored.prepResult);
+      setPrepError(stored.prepError);
+      setPrepWarning(stored.prepWarning);
+    }
+    setTab("prep");
+  }
+
+  function applyPrepResult(parsed, { errorMessage = null, warning = null, skipBoardCommit = false } = {}) {
     const withUpdate = ensureComplianceUpdate(parsed, prepForm);
     withUpdate.compliance_update.id = uid();
     withUpdate.compliance_update.timestamp = TS();
     setPrepResult(withUpdate);
     setPrepError(errorMessage);
     setPrepWarning(warning);
-    commitToBoard(withUpdate.compliance_update, prepForm.model);
+    if (!skipBoardCommit) {
+      commitToBoard(withUpdate.compliance_update, prepForm.model);
+    }
+    const hs = withUpdate.handshake_file;
+    persistWorkflowProfile({
+      ...mergePrepAndPush(prepForm, pushForm),
+      description: prepForm.description || hs?.description || "",
+      stack: prepForm.stack || (Array.isArray(hs?.stack) ? hs.stack.join(", ") : ""),
+      model: prepForm.model || hs?.model_used || "",
+      status: prepForm.status || hs?.status || "Active",
+    });
+    persistPrepReport(prepForm.projectName, {
+      prepResult: withUpdate,
+      prepError: errorMessage,
+      prepWarning: warning,
+    });
   }
 
   // ── PREP: audit project, generate handshake, remediation script, compliance update
   async function runPrep() {
+    const validation = validatePrepForm(prepForm);
+    if (!validation.ok) {
+      setPrepFieldErrors(validation.fieldErrors);
+      setPrepInputError(validation.messages[0]);
+      setPrepError(null);
+      setPrepWarning(null);
+      setPrepResult(null);
+      showToast(`Fix form: ${validation.messages[0]}`, false, 8000);
+      prepFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
+    setPrepFieldErrors({});
+    setPrepInputError(null);
     if (!prepForm.projectName.trim()) return;
+    persistWorkflowProfile(mergePrepAndPush(prepForm, pushForm));
     setPrepping(true);
     setPrepError(null);
     setPrepWarning(null);
@@ -649,11 +841,20 @@ Run the full compliance audit and generate the prep agent now.`;
           ? "The AI response was cut off. Copy the config below, then run Prep again if anything looks incomplete."
           : null;
       applyPrepResult(parsed, { warning });
-      showToast(warning ? "Prep finished — review warnings below" : "Prep complete — copy your files below");
+      if (warning) {
+        const guidance = getPrepWarningGuidance(warning);
+        showToast(`Prep warning: ${guidance.title} — see steps below`, false, 7000);
+      } else {
+        showToast("Prep complete — copy your files below");
+      }
     } catch (e) {
       const message = e.message || "Prep agent generation failed";
-      applyPrepResult(buildFallbackPrepResult(prepForm, message), { errorMessage: message });
-      showToast("Prep had an issue — basic config is ready to copy below", false);
+      const guidance = getPrepErrorGuidance(message);
+      applyPrepResult(buildFallbackPrepResult(prepForm, guidance), {
+        errorMessage: message,
+        skipBoardCommit: true,
+      });
+      showToast(`Prep failed: ${guidance.title} — see red banner below`, false, 8000);
     }
     setPrepping(false);
   }
@@ -733,9 +934,11 @@ Run the full compliance audit and generate the prep agent now.`;
         <div style={{
           position: "fixed", top: 20, right: 20, zIndex: 999,
           background: toast.ok ? "#6EE7B7" : "#FCA5A5",
-          color: "#0A0C10", borderRadius: 7, padding: "10px 18px",
+          color: "#0A0C10", borderRadius: 7, padding: "12px 18px",
           fontSize: 12, fontWeight: 700, boxShadow: "0 4px 24px #0008",
-        }}>{toast.msg}</div>
+          maxWidth: 420, lineHeight: 1.5,
+          border: toast.ok ? "none" : "2px solid #991B1B",
+        }}>{toast.ok ? toast.msg : `✕ ${toast.msg}`}</div>
       )}
 
       {/* Header */}
@@ -786,14 +989,42 @@ Run the full compliance audit and generate the prep agent now.`;
             </div>
 
             <div style={S.grid}>
-              {projects.map(proj => (
-                <div key={proj.id} style={S.projCard(proj.status)} onClick={() => { setActiveLog(proj.id); setTab("board"); }}>
+              {projects.map(proj => {
+                const prepSummary = prepReportSummary(getStoredPrepReport(prepReports, proj.name));
+                return (
+                <div
+                  key={proj.id}
+                  style={S.projCard(proj.status)}
+                  onClick={() => {
+                    setActiveLog(proj.id);
+                    setBoardPrepReportOpen(!!prepSummary);
+                    setTab("board");
+                  }}
+                >
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                     <StatusBadge status={proj.status} />
                     <span style={{ fontSize: 10, color: "#475569" }}>{proj.model}</span>
                   </div>
                   <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>{proj.name}</div>
-                  <div style={{ fontSize: 11, color: "#475569" }}>{proj.updates.length} update{proj.updates.length !== 1 ? "s" : ""}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 11, color: "#475569" }}>{proj.updates.length} update{proj.updates.length !== 1 ? "s" : ""}</div>
+                    {prepSummary && (
+                      <span style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: "2px 8px",
+                        borderRadius: 4,
+                        background: prepSummary.failed ? "#FCA5A522" : "#FDE68A22",
+                        color: prepSummary.failed ? "#FCA5A5" : "#FDE68A",
+                      }}>
+                        {prepSummary.failed
+                          ? "PREP FAILED"
+                          : prepSummary.score != null
+                            ? `PREP ${prepSummary.score}/100`
+                            : "PREP SAVED"}
+                      </span>
+                    )}
+                  </div>
                   {proj.updates[0] && (
                     <div style={{ marginTop: 10, borderTop: "1px solid #1E2530", paddingTop: 10 }}>
                       <Tag type={proj.updates[0].type} />
@@ -803,21 +1034,37 @@ Run the full compliance audit and generate the prep agent now.`;
                     </div>
                   )}
                 </div>
-              ))}
+              );})}
             </div>
 
             {/* Expanded log */}
             {activeLog && (() => {
               const proj = projects.find(p => p.id === activeLog);
               if (!proj) return null;
+              const storedPrep = getStoredPrepReport(prepReports, proj.name);
+              const prepSummary = prepReportSummary(storedPrep);
               return (
                 <div style={{ ...S.card, marginTop: 24 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <span style={{ fontSize: 15, fontWeight: 700 }}>{proj.name}</span>
                       <StatusBadge status={proj.status} />
                     </div>
-                    <div style={{ display: "flex", gap: 8 }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {storedPrep && (
+                        <button
+                          style={{ ...S.btn("ghost"), fontSize: 10, padding: "4px 10px", color: boardPrepReportOpen ? "#FDE68A" : undefined }}
+                          onClick={() => setBoardPrepReportOpen(v => !v)}
+                        >
+                          {boardPrepReportOpen ? "▼ HIDE PREP REPORT" : "◈ VIEW PREP REPORT"}
+                        </button>
+                      )}
+                      <button
+                        style={{ ...S.btn("ghost"), fontSize: 10, padding: "4px 10px" }}
+                        onClick={() => openPrepAgentForProject(proj.name)}
+                      >
+                        ◈ OPEN PREP AGENT
+                      </button>
                       {Object.keys(STATUS_COLORS).map(s => (
                         <button key={s} style={{ ...S.btn("ghost"), fontSize: 10, padding: "4px 10px" }}
                           onClick={() => setProjects(prev => prev.map(p => p.id === proj.id ? { ...p, status: s } : p))}>
@@ -827,6 +1074,37 @@ Run the full compliance audit and generate the prep agent now.`;
                       <button style={{ ...S.btn("ghost"), fontSize: 10, padding: "4px 10px" }} onClick={() => setActiveLog(null)}>✕ Close</button>
                     </div>
                   </div>
+
+                  {storedPrep && boardPrepReportOpen && (
+                    <div style={{ marginBottom: 24, paddingBottom: 24, borderBottom: "1px solid #1E2530" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#FDE68A", letterSpacing: "0.12em", marginBottom: 14 }}>
+                        PREP REPORT
+                        {prepSummary?.score != null && (
+                          <span style={{ marginLeft: 10, color: prepSummary.failed ? "#FCA5A5" : "#6EE7B7" }}>
+                            {prepSummary.failed ? "(failed run)" : `(${prepSummary.score}/100)`}
+                          </span>
+                        )}
+                      </div>
+                      <PrepReportPanel
+                        prepResult={storedPrep.prepResult}
+                        prepError={storedPrep.prepError}
+                        prepWarning={storedPrep.prepWarning}
+                        savedAt={storedPrep.savedAt}
+                        onRetry={() => openPrepAgentForProject(proj.name)}
+                        onToast={showToast}
+                        showComplianceSection={false}
+                        compact
+                      />
+                    </div>
+                  )}
+
+                  {!storedPrep && (
+                    <div style={{ fontSize: 12, color: "#64748B", marginBottom: 16, lineHeight: 1.6 }}>
+                      No Prep report saved for this project yet. Click <strong style={{ color: "#FDE68A" }}>◈ OPEN PREP AGENT</strong> to run Prep.
+                    </div>
+                  )}
+
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: "0.12em", marginBottom: 12 }}>UPDATES</div>
                   {proj.updates.length === 0 && <div style={{ color: "#475569", fontSize: 12 }}>No updates yet.</div>}
                   {proj.updates.map(u => (
                     <div key={u.id} style={S.updateRow}>
@@ -968,6 +1246,7 @@ Run the full compliance audit and generate the prep agent now.`;
                   <div style={{ fontSize: 11, color: "#94A3B8", marginBottom: 16, lineHeight: 1.7 }}>
                     The tracker already knows this project. It will generate a reporter script with everything hardcoded — project name, schema, endpoint — so the receiving agent drops it in and runs it with zero configuration.
                   </div>
+                  {renderProjectPicker("Fields below fill in from Prep or your board selection.")}
                   {[
                     { key: "projectName", label: "Project Name *", ph: "e.g. Research Agent v2" },
                     { key: "description", label: "What it does *", ph: "What is this project? What problem does it solve?", multi: true },
@@ -977,8 +1256,20 @@ Run the full compliance audit and generate the prep agent now.`;
                     <div key={key} style={{ marginBottom: 12 }}>
                       <div style={{ fontSize: 10, color: "#475569", letterSpacing: "0.1em", marginBottom: 4 }}>{label.toUpperCase()}</div>
                       {multi
-                        ? <textarea rows={3} style={S.input} placeholder={ph} value={pushForm[key]} onChange={e => setPushForm(f => ({ ...f, [key]: e.target.value }))} />
-                        : <input style={{ ...S.input, padding: "8px 12px" }} placeholder={ph} value={pushForm[key]} onChange={e => setPushForm(f => ({ ...f, [key]: e.target.value }))} />}
+                        ? <textarea rows={3} style={S.input} placeholder={ph} value={pushForm[key]} onChange={e => {
+                            const v = e.target.value;
+                            setPushForm(f => ({ ...f, [key]: v }));
+                            if (["projectName", "description", "stack", "model"].includes(key)) {
+                              updatePrepField(key, v);
+                            }
+                          }} />
+                        : <input style={{ ...S.input, padding: "8px 12px" }} placeholder={ph} value={pushForm[key]} onChange={e => {
+                            const v = e.target.value;
+                            setPushForm(f => ({ ...f, [key]: v }));
+                            if (["projectName", "description", "stack", "model"].includes(key)) {
+                              updatePrepField(key, v);
+                            }
+                          }} />}
                     </div>
                   ))}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
@@ -1204,27 +1495,73 @@ Run the full compliance audit and generate the prep agent now.`;
             <div style={{ display: "grid", gridTemplateColumns: prepResult ? "1fr" : "1fr 1fr", gap: 20 }}>
 
               {/* ── Input form ── */}
-              <div style={S.card}>
+              <div ref={prepFormRef} style={S.card}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#FDE68A", letterSpacing: "0.12em", marginBottom: 4 }}>◈ PREP AGENT</div>
                 <div style={{ fontSize: 11, color: "#94A3B8", marginBottom: 16, lineHeight: 1.7 }}>
                   Audits a project for reporter compliance, fixes what it can, writes a <strong style={{ color: "#FDE68A" }}>.tracker-config.json</strong> handshake file, and logs a compliance update to the board. Run this <em>before</em> deploying any reporter.
                 </div>
+
+                {renderProjectPicker("Fill in project details once — Push Reporter reuses them automatically.")}
+
+                {(prepInputError || prepFieldErrors._form) && (
+                  <div style={{
+                    marginBottom: 14,
+                    padding: "12px 14px",
+                    borderRadius: 8,
+                    border: "2px solid #FCA5A5",
+                    background: "#FCA5A512",
+                  }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "#FCA5A5", letterSpacing: "0.1em", marginBottom: 6 }}>
+                      ✕ FIX FORM ERRORS BEFORE RUNNING PREP
+                    </div>
+                    <div style={{ fontSize: 12, color: "#E2E8F0", lineHeight: 1.6 }}>
+                      {prepInputError || prepFieldErrors._form}
+                    </div>
+                  </div>
+                )}
 
                 {[
                   { key: "projectName", label: "Project Name *", ph: "e.g. Vision Pipeline Agent" },
                   { key: "description", label: "What it does", ph: "Brief description of the project", multi: true },
                   { key: "stack", label: "Stack / Tools", ph: "e.g. Python, FastAPI, OpenAI" },
                   { key: "model", label: "AI Model", ph: "e.g. GPT-4o, Claude 3.5, Gemini" },
-                  { key: "blockers", label: "Known Blockers", ph: "Anything currently blocking progress?" },
-                  { key: "knownIssues", label: "Known Gaps / Issues", ph: "Missing docs, no git, unclear status?" },
-                ].map(({ key, label, ph, multi }) => (
-                  <div key={key} style={{ marginBottom: 11 }}>
-                    <div style={{ fontSize: 10, color: "#475569", letterSpacing: "0.1em", marginBottom: 4 }}>{label.toUpperCase()}</div>
-                    {multi
-                      ? <textarea rows={2} style={S.input} placeholder={ph} value={prepForm[key]} onChange={e => setPrepForm(f => ({ ...f, [key]: e.target.value }))} />
-                      : <input style={{ ...S.input, padding: "7px 12px" }} placeholder={ph} value={prepForm[key]} onChange={e => setPrepForm(f => ({ ...f, [key]: e.target.value }))} />}
-                  </div>
-                ))}
+                  { key: "blockers", label: "Known Blockers", ph: "Anything currently blocking progress?", multi: true },
+                  { key: "knownIssues", label: "Known Gaps / Issues", ph: "Missing docs, no git, unclear status?", multi: true },
+                ].map(({ key, label, ph, multi }) => {
+                  const limit = getPrepFieldLimit(key);
+                  const value = prepForm[key] || "";
+                  const fieldError = prepFieldErrors[key];
+                  const nearLimit = limit && value.length > limit * 0.9;
+                  const inputStyle = {
+                    ...S.input,
+                    ...(multi ? {} : { padding: "7px 12px" }),
+                    border: fieldError ? "1px solid #FCA5A5" : nearLimit ? "1px solid #FDE68A66" : "1px solid #1E2530",
+                  };
+
+                  return (
+                    <div key={key} style={{ marginBottom: 11 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                        <div style={{ fontSize: 10, color: fieldError ? "#FCA5A5" : "#475569", letterSpacing: "0.1em" }}>
+                          {label.toUpperCase()}
+                        </div>
+                        {limit && (
+                          <div style={{
+                            fontSize: 10,
+                            color: fieldError ? "#FCA5A5" : nearLimit ? "#FDE68A" : "#475569",
+                          }}>
+                            {value.length}/{limit}
+                          </div>
+                        )}
+                      </div>
+                      {multi
+                        ? <textarea rows={2} style={inputStyle} placeholder={ph} value={value} maxLength={limit || undefined} onChange={e => updatePrepField(key, e.target.value)} />
+                        : <input style={inputStyle} placeholder={ph} value={value} maxLength={limit || undefined} onChange={e => updatePrepField(key, e.target.value)} />}
+                      {fieldError && (
+                        <div style={{ fontSize: 10, color: "#FCA5A5", marginTop: 4, lineHeight: 1.5 }}>{fieldError}</div>
+                      )}
+                    </div>
+                  );
+                })}
 
                 <div style={{ marginBottom: 14 }}>
                   <div style={{ fontSize: 10, color: "#475569", letterSpacing: "0.1em", marginBottom: 6 }}>CURRENT STATUS</div>
@@ -1293,183 +1630,33 @@ Run the full compliance audit and generate the prep agent now.`;
 
               {prepResult && (
                 <div ref={prepResultsRef} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <PrepReportPanel
+                    prepResult={prepResult}
+                    prepError={prepError}
+                    prepWarning={prepWarning}
+                    onRetry={runPrep}
+                    onToast={showToast}
+                    showComplianceSection={!prepError}
+                  />
 
-                  {(prepError || prepWarning) && (
-                    <div style={{
-                      ...S.card,
-                      border: `1px solid ${prepError ? "#FCA5A566" : "#FDE68A66"}`,
-                      background: prepError ? "#FCA5A50A" : "#FDE68A0A",
-                    }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: prepError ? "#FCA5A5" : "#FDE68A", marginBottom: 6 }}>
-                        {prepError ? "PREP ISSUE" : "PREP WARNING"}
-                      </div>
-                      <div style={{ fontSize: 11, color: "#94A3B8", lineHeight: 1.6 }}>
-                        {prepError || prepWarning}
-                      </div>
+                  {prepError && (
+                  <div style={{ ...S.card, border: "1px solid #FCA5A544", background: "#FCA5A508" }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#FCA5A5", letterSpacing: "0.1em", marginBottom: 8 }}>
+                      BOARD NOT UPDATED
                     </div>
-                  )}
-
-                  {/* Copy actions — shown first so they are easy to find */}
-                  <div style={{ ...S.card, border: "1px solid #6EE7B744", background: "#0D1017" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#6EE7B7", letterSpacing: "0.12em", marginBottom: 10 }}>
-                      PREP COMPLETE — COPY YOUR FILES
-                    </div>
-                    <div style={{ fontSize: 11, color: "#94A3B8", marginBottom: 14, lineHeight: 1.6 }}>
-                      Save in your <strong style={{ color: "#E2E8F0" }}>outside project&apos;s top folder</strong> (not in ai-project-tracker).
-                      Name the file exactly <strong style={{ color: "#93C5FD" }}>.tracker-config.json</strong> — same level as README or package.json.
-                    </div>
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      <button
-                        style={{ ...S.btn(), padding: "10px 16px", fontSize: 12 }}
-                        onClick={async () => {
-                          await copyTextToClipboard(JSON.stringify(prepResult.handshake_file, null, 2));
-                          setHandshakeCopied(true);
-                          setTimeout(() => setHandshakeCopied(false), 2000);
-                          showToast("Copied .tracker-config.json ✓");
-                        }}
-                      >
-                        {handshakeCopied ? "✓ COPIED" : "⎘ COPY .tracker-config.json"}
-                      </button>
-                      {prepResult.prep_script ? (
-                        <button
-                          style={{ ...S.btn("ghost"), padding: "10px 16px", fontSize: 12 }}
-                          onClick={async () => {
-                            await copyTextToClipboard(prepResult.prep_script);
-                            setPrepScriptCopied(true);
-                            setTimeout(() => setPrepScriptCopied(false), 2000);
-                            showToast("Copied prep script ✓");
-                          }}
-                        >
-                          {prepScriptCopied ? "✓ COPIED" : "⎘ COPY PREP SCRIPT"}
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  {/* Audit scorecard */}
-                  <div style={S.card}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#FDE68A", letterSpacing: "0.1em" }}>COMPLIANCE AUDIT</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div style={{ fontSize: 24, fontWeight: 700, color: (prepResult.audit?.overall_score ?? 0) >= 80 ? "#6EE7B7" : (prepResult.audit?.overall_score ?? 0) >= 50 ? "#FDE68A" : "#FCA5A5" }}>
-                          {prepResult.audit?.overall_score ?? "—"}
-                        </div>
-                        <div style={{ fontSize: 10, color: "#475569" }}>/100</div>
-                      </div>
-                    </div>
-                    {(prepResult.audit?.categories?.length ?? 0) === 0 ? (
-                      <div style={{ fontSize: 11, color: "#475569" }}>Audit details were not returned — you can still copy the config file above.</div>
-                    ) : (
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                      {prepResult.audit.categories.map(cat => {
-                        const statusColor = cat.status === "pass" ? "#6EE7B7" : cat.status === "warn" ? "#FDE68A" : "#FCA5A5";
-                        const statusIcon = cat.status === "pass" ? "✓" : cat.status === "warn" ? "⚠" : "✕";
-                        return (
-                          <div key={cat.name} style={{ background: "#060810", border: `1px solid ${statusColor}33`, borderRadius: 7, padding: "10px 12px" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                              <span style={{ fontSize: 10, fontWeight: 700, color: statusColor }}>{statusIcon} {cat.name}</span>
-                              <span style={{ fontSize: 10, color: statusColor }}>{cat.score}</span>
-                            </div>
-                            <div style={{ height: 3, background: "#ffffff10", borderRadius: 3 }}>
-                              <div style={{ height: "100%", width: `${cat.score}%`, background: statusColor, borderRadius: 3 }} />
-                            </div>
-                            {cat.findings?.length > 0 && (
-                              <div style={{ marginTop: 6 }}>
-                                {cat.findings.slice(0, 2).map((f, i) => (
-                                  <div key={i} style={{ fontSize: 9, color: "#475569", marginTop: 2, lineHeight: 1.4 }}>• {f}</div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    )}
-                  </div>
-
-                  {/* Fixes + manual actions */}
-                  {(prepResult.audit?.categories?.length ?? 0) > 0 && (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                    <div style={S.card}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: "#6EE7B7", letterSpacing: "0.1em", marginBottom: 10 }}>AUTOMATED FIXES (SCRIPT WILL APPLY)</div>
-                      {prepResult.audit.categories.flatMap(c => c.fixes || []).length === 0
-                        ? <div style={{ fontSize: 11, color: "#475569" }}>No automated fixes needed.</div>
-                        : prepResult.audit.categories.flatMap(c => (c.fixes || []).map(f => ({ fix: f, cat: c.name }))).map(({ fix, cat }, i) => (
-                          <div key={i} style={{ fontSize: 11, color: "#94A3B8", marginBottom: 6, display: "flex", gap: 8 }}>
-                            <span style={{ color: "#6EE7B7", fontWeight: 700 }}>→</span>
-                            <span><span style={{ color: "#475569" }}>[{cat}]</span> {fix}</span>
-                          </div>
-                        ))}
-                    </div>
-                    <div style={S.card}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: "#FCA5A5", letterSpacing: "0.1em", marginBottom: 10 }}>MANUAL ACTIONS REQUIRED</div>
-                      {(!prepResult.human_actions_required || prepResult.human_actions_required.length === 0)
-                        ? <div style={{ fontSize: 11, color: "#475569" }}>No manual actions needed — fully automated.</div>
-                        : prepResult.human_actions_required.map((a, i) => (
-                          <div key={i} style={{ fontSize: 11, color: "#FCA5A5", marginBottom: 6, display: "flex", gap: 8 }}>
-                            <span style={{ fontWeight: 700 }}>{i + 1}.</span>{a}
-                          </div>
-                        ))}
+                    <div style={{ fontSize: 12, color: "#CBD5E1", lineHeight: 1.6 }}>
+                      Because Prep failed, nothing new was added to your project card. Fix the issue above and click <strong style={{ color: "#FCA5A5" }}>⟳ RUN PREP AGENT AGAIN</strong> before continuing to Reporter.
                     </div>
                   </div>
                   )}
-
-                  {/* Handshake file + script previews */}
-                  <div style={{ display: "grid", gridTemplateColumns: prepResult.prep_script ? "1fr 1fr" : "1fr", gap: 14 }}>
-                    <div style={S.card}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: "#93C5FD", letterSpacing: "0.1em" }}>.tracker-config.json</div>
-                        <button style={{ ...S.btn(), fontSize: 10, padding: "4px 10px" }} onClick={async () => {
-                          await copyTextToClipboard(JSON.stringify(prepResult.handshake_file, null, 2));
-                          setHandshakeCopied(true); setTimeout(() => setHandshakeCopied(false), 2000);
-                        }}>{handshakeCopied ? "✓ COPIED" : "⎘ COPY"}</button>
-                      </div>
-                      <div style={{ fontSize: 10, color: "#475569", marginBottom: 8 }}>
-                        Save as <strong style={{ color: "#93C5FD" }}>.tracker-config.json</strong> in your outside project&apos;s top folder (same level as README).
-                      </div>
-                      <div style={{ ...S.promptBox, fontSize: 10, maxHeight: 200, overflowY: "auto" }}>
-                        {JSON.stringify(prepResult.handshake_file, null, 2)}
-                      </div>
-                    </div>
-                    {prepResult.prep_script ? (
-                    <div style={S.card}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: "#C4B5FD", letterSpacing: "0.1em" }}>PREP SCRIPT</div>
-                        <button style={{ ...S.btn(), fontSize: 10, padding: "4px 10px" }} onClick={async () => {
-                          await copyTextToClipboard(prepResult.prep_script);
-                          setPrepScriptCopied(true); setTimeout(() => setPrepScriptCopied(false), 2000);
-                        }}>{prepScriptCopied ? "✓ COPIED" : "⎘ COPY"}</button>
-                      </div>
-                      <div style={{ fontSize: 11, color: "#94A3B8", marginBottom: 8 }}>{prepResult.prep_summary}</div>
-                      <div style={{ ...S.promptBox, fontSize: 10, maxHeight: 172, overflowY: "auto" }}>{prepResult.prep_script}</div>
-                    </div>
-                    ) : null}
-                  </div>
-
-                  {/* Compliance update preview */}
-                  <div style={S.card}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "#6EE7B7", letterSpacing: "0.1em", marginBottom: 10 }}>COMPLIANCE UPDATE — AUTO-LOGGED TO BOARD</div>
-                    <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                      <Tag type={prepResult.compliance_update.type} />
-                      <StatusBadge status={prepResult.compliance_update.status} />
-                      <ConfidenceMeter value={prepResult.compliance_update.confidence} />
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{prepResult.compliance_update.summary}</div>
-                    <div style={{ fontSize: 11, color: "#94A3B8", lineHeight: 1.6 }}>{prepResult.compliance_update.detail}</div>
-                    {prepResult.compliance_update.next_steps?.length > 0 && (
-                      <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        {prepResult.compliance_update.next_steps.map((s, i) => (
-                          <span key={i} style={{ background: "#6EE7B711", color: "#6EE7B7", borderRadius: 4, fontSize: 10, padding: "2px 8px" }}>→ {s}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
 
                   <button style={{ ...S.btn("ghost"), width: "100%" }}
                     onClick={() => {
                       setPrepResult(null);
                       setPrepError(null);
                       setPrepWarning(null);
+                      setPrepFieldErrors({});
+                      setPrepInputError(null);
                       setPrepForm({ projectName: "", description: "", stack: "", model: "", status: "Active", blockers: "", knownIssues: "", agentMode: "autonomous" });
                     }}>
                     + PREP ANOTHER PROJECT

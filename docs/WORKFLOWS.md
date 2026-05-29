@@ -25,10 +25,11 @@ The update appears on **BOARD**. New project names create a new card automatical
 Use this when you want to connect an **outside project folder** and create a config file (`.tracker-config.json`).
 
 1. Click **PREP AGENT**.
-2. Fill in the form (**Project Name** is required).
-3. Click **◈ RUN PREP AGENT**.
-4. Review the score and suggestions.
-5. Click **⎘ COPY .tracker-config.json** and save it as **`.tracker-config.json`** in the **top folder** of your outside project (same level as `README.md` — not inside `ai-project-tracker`). See [Your First Project — Where to save](./FIRST_PROJECT.md#where-to-save-tracker-configjson).
+2. Choose a project in **SELECT PROJECT** (or click a card on **BOARD** first).
+3. Fill in the form (**Project Name** is required). Saved details reuse on Push Reporter.
+4. Click **◈ RUN PREP AGENT**.
+5. Review the score and suggestions.
+6. Click **⎘ COPY .tracker-config.json** and save it as **`.tracker-config.json`** in the **top folder** of your outside project (same level as `README.md` — not inside `ai-project-tracker`). See [Your First Project — Where to save](./FIRST_PROJECT.md#where-to-save-tracker-configjson).
 
 An update is added to **BOARD** automatically.
 
@@ -36,13 +37,14 @@ An update is added to **BOARD** automatically.
 
 ## 3. Push Reporter (REPORTER → ▲ PUSH MODE)
 
-Step 3 in the outside-project flow (see diagram below). Creates a ready-to-use script when you know your project's name, tools, and status.
+Step 3 in the outside-project flow (see diagram below). Reuses the same project details from Prep when you pick the same **SELECT PROJECT** entry.
 
 1. Click **REPORTER** → **▲ PUSH MODE**.
-2. Fill in **Project Name** and **What it does** (required).
-3. Fill in stack, model, and stage if you can.
-4. Click **▲ GENERATE PUSH REPORTER + LOG FIRST UPDATE**.
-5. Copy the script and save it in your outside project.
+2. Choose the same project in **SELECT PROJECT** — name, description, stack, and model should already be filled.
+3. Set **Stage** (**🌱 New** or **🔧 In Progress**). If **In Progress**, add **Current state / context**.
+4. Set **Receiving agent type** (**🤖 Autonomous** or **👤 Human-in-loop**).
+5. Click **▲ GENERATE PUSH REPORTER + LOG FIRST UPDATE**.
+6. Copy the script and save it as **`reporter.py`** in your outside project's top folder.
 
 Check **BOARD** for the first update.
 
